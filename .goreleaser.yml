@@ -92,6 +92,7 @@ homebrew_casks:
     repository:
       owner: loickal
       name: homebrew-newsletter-cli
+      token: "{{ .Env.GITHUB_TOKEN }}"
     commit_author:
       name: "Loïc Kalbermatter"
       email: "loickal@users.noreply.github.com"
