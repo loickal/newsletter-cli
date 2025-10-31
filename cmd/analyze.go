@@ -30,7 +30,11 @@ You can also provide credentials via flags for non-interactive use.`,
 			email = cfg.Email
 		}
 
-		pass := config.Decrypt(cfg.Password)
+		var err error
+		pass, err := config.Decrypt(cfg.Password)
+		if err != nil {
+			pass = "" // Continue with empty password if decryption fails
+		}
 		server := serverFlag
 		if server == "" {
 			server = cfg.Server

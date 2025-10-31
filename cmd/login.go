@@ -20,7 +20,11 @@ var loginCmd = &cobra.Command{
 		server := ""
 		if cfg != nil {
 			email = cfg.Email
-			password = config.Decrypt(cfg.Password)
+			var err error
+			password, err = config.Decrypt(cfg.Password)
+			if err != nil {
+				password = "" // Continue with empty password if decryption fails
+			}
 			server = cfg.Server
 		}
 

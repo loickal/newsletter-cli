@@ -728,10 +728,14 @@ func (m appModel) submitLogin() tea.Cmd {
 		}
 
 		// Save config
+		encryptedPassword, err := config.Encrypt(password)
+		if err != nil {
+			return errorMsg("Failed to encrypt password: " + err.Error())
+		}
 		cfg := config.Config{
 			Email:    email,
 			Server:   server,
-			Password: config.Encrypt(password),
+			Password: encryptedPassword,
 		}
 		if err := config.Save(cfg); err != nil {
 			return errorMsg("Failed to save config: " + err.Error())
