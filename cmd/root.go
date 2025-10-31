@@ -19,11 +19,13 @@ Get started:
   newsletter-cli login     Save your IMAP credentials
   newsletter-cli analyze   Analyze and manage newsletters`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("📬 Newsletter CLI\n")
+		fmt.Println("📬 Newsletter CLI")
+		fmt.Println()
 		fmt.Println("Get started:")
 		fmt.Println("  newsletter-cli login     Save your IMAP credentials")
 		fmt.Println("  newsletter-cli analyze   Analyze and manage newsletters")
-		fmt.Println("\nUse 'newsletter-cli --help' for more information.")
+		fmt.Println()
+		fmt.Println("Use 'newsletter-cli --help' for more information.")
 	},
 }
 
