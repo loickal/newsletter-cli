@@ -38,7 +38,8 @@ You can also provide credentials via flags for non-interactive use.`,
 
 		flagsProvided := daysFlag > 0 || emailFlag != "" || serverFlag != ""
 
-		if err := ui.RunAppSync(email, pass, server, daysFlag, flagsProvided, "analyze"); err != nil {
+		currentVersion := getVersion()
+		if err := ui.RunAppSync(email, pass, server, daysFlag, flagsProvided, "analyze", currentVersion); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

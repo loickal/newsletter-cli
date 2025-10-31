@@ -32,12 +32,29 @@ Get started:
 			server = cfg.Server
 		}
 
+		// Get current version for update check
+		currentVersion := getVersion()
+
 		// Show unified UI - it will handle welcome screen and navigation
-		if err := ui.RunAppSync(email, password, server, 0, false, ""); err != nil {
+		if err := ui.RunAppSync(email, password, server, 0, false, "", currentVersion); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	},
+}
+
+var currentVersion string
+
+func getVersion() string {
+	if currentVersion != "" {
+		return currentVersion
+	}
+	// Try to get version from main package
+	return "dev"
+}
+
+func SetVersion(version string) {
+	currentVersion = version
 }
 
 func Execute() {

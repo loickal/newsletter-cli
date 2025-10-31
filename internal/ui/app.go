@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/loickal/newsletter-cli/internal/config"
 	"github.com/loickal/newsletter-cli/internal/imap"
+	"github.com/loickal/newsletter-cli/internal/update"
 )
 
 type screen int
@@ -34,7 +35,9 @@ type appModel struct {
 	errMsg string
 
 	// Welcome screen
-	welcomeList list.Model
+	welcomeList     list.Model
+	updateAvailable *updateInfo
+	currentVersion  string
 
 	// Login screen
 	loginInputs  []textinput.Model
@@ -60,6 +63,12 @@ type appModel struct {
 	savedServer   string
 }
 
+type updateInfo struct {
+	version string
+	url     string
+	name    string
+}
+
 type appMenuItem struct {
 	title       string
 	description string
@@ -70,7 +79,7 @@ func (i appMenuItem) Title() string       { return i.title }
 func (i appMenuItem) Description() string { return i.description }
 func (i appMenuItem) FilterValue() string { return i.title }
 
-func NewAppModel(savedEmail, savedPassword, savedServer string) appModel {
+func NewAppModel(savedEmail, savedPassword, savedServer string, currentVersion string) appModel {
 	// Initialize login inputs
 	emailInput := textinput.New()
 	emailInput.Placeholder = "you@example.com"
@@ -162,6 +171,7 @@ func NewAppModel(savedEmail, savedPassword, savedServer string) appModel {
 		savedEmail:       savedEmail,
 		savedPassword:    savedPassword,
 		savedServer:      savedServer,
+		currentVersion:   currentVersion,
 	}
 }
 
@@ -176,7 +186,30 @@ func (m appModel) Init() tea.Cmd {
 		cmds = append(cmds, m.startAnalysis())
 	}
 
+	// Start update check if on welcome screen and version is available
+	if m.screen == screenWelcome && m.currentVersion != "" {
+		cmds = append(cmds, m.checkForUpdate(m.currentVersion))
+	}
+
 	return tea.Batch(cmds...)
+}
+
+func (m appModel) checkForUpdate(currentVersion string) tea.Cmd {
+	return func() tea.Msg {
+		release, isNewer, err := update.CheckForUpdate(currentVersion)
+		if err != nil || !isNewer {
+			return updateCheckCompleteMsg{nil}
+		}
+		return updateCheckCompleteMsg{&updateInfo{
+			version: release.TagName,
+			url:     release.URL,
+			name:    release.Name,
+		}}
+	}
+}
+
+type updateCheckCompleteMsg struct {
+	update *updateInfo
 }
 
 func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -281,6 +314,10 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errorMsg:
 		m.errMsg = string(msg)
 		// Stay on current screen but show error
+		return m, nil
+
+	case updateCheckCompleteMsg:
+		m.updateAvailable = msg.update
 		return m, nil
 	}
 
@@ -566,9 +603,25 @@ func (m appModel) viewWelcome() string {
 	)
 
 	listView := docStyle.Render(m.welcomeList.View())
+
+	// Show update notification if available
+	updateNotice := ""
+	if m.updateAvailable != nil {
+		updateStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("220")).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("220")).
+			Padding(0, 1).
+			MarginTop(1)
+		updateNotice = "\n" + updateStyle.Render(
+			fmt.Sprintf("✨ Update available: %s\n   Visit: %s",
+				m.updateAvailable.version, m.updateAvailable.url),
+		)
+	}
+
 	help := helpStyle.Render("[↑↓] Navigate  [Enter] Select  [q/Esc] Quit")
 
-	return docStyle.Render(intro + "\n\n" + listView + "\n" + help)
+	return docStyle.Render(intro + "\n\n" + listView + updateNotice + "\n" + help)
 }
 
 func (m appModel) viewLogin() string {
@@ -707,8 +760,8 @@ var (
 
 // RunAppSync runs the app synchronously (for use from commands)
 // initialScreen can be "login", "analyze", or "" for welcome
-func RunAppSync(savedEmail, savedPassword, savedServer string, days int, flagsProvided bool, initialScreen string) error {
-	m := NewAppModel(savedEmail, savedPassword, savedServer)
+func RunAppSync(savedEmail, savedPassword, savedServer string, days int, flagsProvided bool, initialScreen string, currentVersion string) error {
+	m := NewAppModel(savedEmail, savedPassword, savedServer, currentVersion)
 
 	// Determine initial screen
 	if initialScreen == "login" {
