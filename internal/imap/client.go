@@ -13,15 +13,19 @@ import (
 )
 
 // ConnectIMAP tries to connect and authenticate to an IMAP server.
+// If server is provided, it uses that. Otherwise, it tries to guess from the email.
 // If the server cannot be guessed, the user is prompted to provide it.
-func ConnectIMAP(email, password string) error {
-	server, err := guessIMAPServer(email)
-	if err != nil {
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Printf("⚠️  Could not determine IMAP server for %s\n", email)
-		fmt.Print("Please enter your IMAP server (e.g. imap.yourdomain.com:993): ")
-		input, _ := reader.ReadString('\n')
-		server = strings.TrimSpace(input)
+func ConnectIMAP(email, password, server string) error {
+	if server == "" {
+		var err error
+		server, err = guessIMAPServer(email)
+		if err != nil {
+			reader := bufio.NewReader(os.Stdin)
+			fmt.Printf("⚠️  Could not determine IMAP server for %s\n", email)
+			fmt.Print("Please enter your IMAP server (e.g. imap.yourdomain.com:993): ")
+			input, _ := reader.ReadString('\n')
+			server = strings.TrimSpace(input)
+		}
 	}
 
 	log.Printf("Connecting to IMAP server: %s", server)

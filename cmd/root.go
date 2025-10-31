@@ -10,10 +10,20 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "newsletter-cli",
 	Short: "Analyze and manage your newsletters from the terminal",
-	Long: `A beautiful TUI-based CLI to analyze, list and unsubscribe 
-from newsletters using your IMAP inbox.`,
+	Long: `📬 Newsletter CLI
+
+A beautiful TUI-based CLI to analyze, list and unsubscribe 
+from newsletters using your IMAP inbox.
+
+Get started:
+  newsletter-cli login     Save your IMAP credentials
+  newsletter-cli analyze   Analyze and manage newsletters`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Use 'newsletter-cli login' or 'newsletter-cli analyze' to get started.")
+		fmt.Println("📬 Newsletter CLI\n")
+		fmt.Println("Get started:")
+		fmt.Println("  newsletter-cli login     Save your IMAP credentials")
+		fmt.Println("  newsletter-cli analyze   Analyze and manage newsletters")
+		fmt.Println("\nUse 'newsletter-cli --help' for more information.")
 	},
 }
 
