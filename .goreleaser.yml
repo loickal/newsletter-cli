@@ -1,0 +1,81 @@
+version: 2
+
+project_name: newsletter-cli
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: newsletter-cli
+    main: ./main.go
+    binary: newsletter-cli
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - "-s -w -X main.version={{ .Version }}"
+    flags:
+      - -trimpath
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    wrap_in_directory: false
+    formats: [tar.gz]
+    files:
+      - README.md
+      - src: LICENSE*
+        dst: LICENSE
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "checksums.txt"
+
+dockers_v2:
+  - id: newsletter-cli
+    dockerfile: Dockerfile
+    images:
+      - "ghcr.io/loickal/newsletter-cli"
+    tags:
+      - "{{ .Version }}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    extra_files:
+      - README.md
+      - LICENSE
+    labels:
+      "org.opencontainers.image.title": "{{ .ProjectName }}"
+      "org.opencontainers.image.version": "{{ .Version }}"
+      "org.opencontainers.image.source": "{{ .GitURL }}"
+    annotations:
+      "org.opencontainers.image.description": "CLI tool to analyze and unsubscribe from newsletters"
+    # removed the invalid --ulimit flag
+    retry:
+      attempts: 3
+      delay: 10s
+      max_delay: 1m
+
+changelog:
+  use: git
+  sort: desc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+release:
+  github:
+    owner: loickal
+    name: newsletter-cli
