@@ -1,0 +1,77 @@
+# ───────────────────────────────
+# Go build artifacts
+# ───────────────────────────────
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# ───────────────────────────────
+# Go workspace + cache
+# ───────────────────────────────
+# (These are automatically created by `go build`, `go test`, etc.)
+/vendor/
+/.idea/
+/.vscode/
+/.env
+*.log
+*.tmp
+*.swp
+*.bak
+*.old
+*.local
+
+# ───────────────────────────────
+# GoReleaser output
+# ───────────────────────────────
+/dist/
+/tmp/goreleaser*
+/build/
+/release-notes.md
+/checksums.txt
+
+# ───────────────────────────────
+# Docker & container stuff
+# ───────────────────────────────
+*.tar
+*.tgz
+*.img
+*.pid
+
+# ───────────────────────────────
+# System + Editor noise
+# ───────────────────────────────
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ───────────────────────────────
+# GitHub Actions & CI
+# ───────────────────────────────
+/coverage/
+/test-results/
+/reports/
+/cache/
+
+# ───────────────────────────────
+# Secrets / Environment
+# ───────────────────────────────
+.env
+.env.local
+.env.*.local
+*.secret
+*.key
+*.pem
+*.crt
+
+# ───────────────────────────────
+# Misc project specific
+# ───────────────────────────────
+newsletter-cli_v*
+newsletter-cli_*
