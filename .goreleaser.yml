@@ -103,7 +103,7 @@ winget:
     repository:
       owner: microsoft
       name: winget-pkgs
-      branch: main
+      branch: master
       token: "{{ .Env.WINGET_TOKEN }}"
       pull_request:
         enabled: true
