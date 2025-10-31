@@ -23,21 +23,24 @@ var analyzeCmd = &cobra.Command{
 If you have saved credentials, they will be used automatically.
 You can also provide credentials via flags for non-interactive use.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cfg, _ := config.Load()
+		account, _ := config.GetSelectedAccount()
 
 		email := emailFlag
-		if email == "" {
-			email = cfg.Email
+		if email == "" && account != nil {
+			email = account.Email
 		}
 
 		var err error
-		pass, err := config.Decrypt(cfg.Password)
-		if err != nil {
-			pass = "" // Continue with empty password if decryption fails
+		pass := ""
+		if account != nil {
+			pass, err = config.Decrypt(account.Password)
+			if err != nil {
+				pass = "" // Continue with empty password if decryption fails
+			}
 		}
 		server := serverFlag
-		if server == "" {
-			server = cfg.Server
+		if server == "" && account != nil {
+			server = account.Server
 		}
 
 		flagsProvided := daysFlag > 0 || emailFlag != "" || serverFlag != ""

@@ -13,19 +13,19 @@ var loginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Login to your email account via IMAP",
 	Run: func(cmd *cobra.Command, args []string) {
-		// Load saved credentials (if any) to pre-fill the form
-		cfg, _ := config.Load()
+		// Load selected account (if any) to pre-fill the form
+		account, _ := config.GetSelectedAccount()
 		email := ""
 		password := ""
 		server := ""
-		if cfg != nil {
-			email = cfg.Email
+		if account != nil {
+			email = account.Email
 			var err error
-			password, err = config.Decrypt(cfg.Password)
+			password, err = config.Decrypt(account.Password)
 			if err != nil {
 				password = "" // Continue with empty password if decryption fails
 			}
-			server = cfg.Server
+			server = account.Server
 		}
 
 		currentVersion := getVersion()

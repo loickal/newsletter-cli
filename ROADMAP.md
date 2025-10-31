@@ -18,91 +18,121 @@ Built with **Go**, **Cobra**, and **Bubble Tea** — focused on simplicity, loca
 
 ---
 
-## 🧩 Current MVP (v0.1.0)
+## 🧩 Completed Features (v0.1.0 - v0.2.0)
 
-✅ IMAP login & server autodetect  
+✅ IMAP login & server autodiscovery (DNS SRV, autoconfig/autodiscover)  
 ✅ Fetch & analyze recent emails  
 ✅ Heuristic newsletter detection  
 ✅ Interactive Bubble Tea dashboard  
-✅ Real unsubscribe link detection (via `List-Unsubscribe`)  
-✅ Config persistence & local encryption
+✅ Real unsubscribe link detection (via `List-Unsubscribe` header)  
+✅ Secure encryption using age (ChaCha20Poly1305)  
+✅ Config persistence & local encryption  
+✅ Multiple account management (add, switch, delete)  
+✅ Mass unsubscribe with multiselect  
+✅ Automatic mailto: unsubscribe via SMTP  
+✅ Persistent tracking of unsubscribed newsletters  
+✅ CLI flags for non-interactive usage  
+✅ Color-coded counts and visual indicators  
+✅ Search/filter functionality  
+✅ Auto-discovery of IMAP servers  
+✅ GUI launcher (double-click support)  
+✅ Cross-platform support (macOS, Linux, Windows)  
+✅ Homebrew and Winget package distribution
 
 ---
 
-## 📈 Phase 2 – Core Enhancements
+## 📈 Phase 2 – Core Enhancements ✅ COMPLETE
 
-### 🔹 Auto-Unsubscribe Mode
-- Add `newsletter-cli unsubscribe --all`
-- Handle both HTTP and `mailto:` unsubscribe links
-- Display summary after run
+### 🔹 Auto-Unsubscribe Mode ✅
+- ✅ Mass unsubscribe with multiselect (`Space` to select, `U` to unsubscribe)
+- ✅ Handle both HTTP (GET/POST) and `mailto:` unsubscribe links
+- ✅ Automatic SMTP server detection for mailto links
+- ✅ Display summary after unsubscribe operations
 
-### 🔹 Improved Newsletter Recognition
-- Detect via headers (`Precedence`, `List-Id`, `Auto-Submitted`)
-- Cache results in local BoltDB / SQLite
-- Flag suspicious or duplicate senders
+### 🔹 Multiple Account Management ✅
+- ✅ Add, switch, and delete email accounts
+- ✅ Persistent account selection
+- ✅ Account management UI screen
 
-### 🔹 Command-Line Flags
-- Support non-interactive usage:
+### 🔹 Command-Line Flags ✅
+- ✅ Support non-interactive usage:
+  ```bash
   newsletter-cli analyze --days 60 --email foo@example.com --server imap.gmail.com:993
+  ```
 
-markdown
-Copy code
+### 🔹 Persistent Unsubscribe Tracking ✅
+- ✅ Save unsubscribed newsletters to `unsubscribed.json`
+- ✅ Visual indicators for already unsubscribed items
+- ✅ Persistent across sessions
 
 ---
 
-## 💅 Phase 3 – UI & UX Polish
+## 💅 Phase 3 – UI & UX Polish ✅ MOSTLY COMPLETE
 
-### 🔹 TUI Improvements
-- Search / filter bar (`bubbles/textinput`)
-- Color-coded counts (green → red scale)
-- Keymap help (`?` dialog)
-- Header summary (total newsletters & emails)
+### 🔹 TUI Improvements ✅
+- ✅ Search / filter bar (`bubbles/textinput`) - `/` key
+- ✅ Color-coded counts (green → red scale)
+- ✅ Keymap help shown in footer
+- ✅ Header summary (total newsletters & emails)
+- ✅ Visual indicators for selected and unsubscribed items
 
-### 🔹 Loading & Feedback
-- Spinner animation while fetching (`bubbles/spinner`)
-- Confirmation dialog for unsubscribing
+### 🔹 Loading & Feedback ✅
+- ✅ Spinner animation while fetching (`bubbles/spinner`)
+- ✅ Status messages during operations
+- ✅ Error handling and user feedback
+
+### 🔹 Remaining
+- Keymap help dialog (`?` key)
+- Confirmation dialog for unsubscribing (currently direct)
 - Persistent selection memory per sender
 
 ---
 
-## 🏗️ Phase 4 – Architecture & Quality
+## 🏗️ Phase 4 – Architecture & Quality 🟡 IN PROGRESS
 
-### 🔹 Secure Storage
-- Replace XOR encryption with [`filippo.io/age`](https://pkg.go.dev/filippo.io/age)
-- Store credentials and tokens securely in `$HOME/.config/newsletter-cli/`
+### 🔹 Secure Storage ✅
+- ✅ Replace XOR encryption with [`filippo.io/age`](https://pkg.go.dev/filippo.io/age)
+- ✅ Store credentials and tokens securely in `$HOME/.config/newsletter-cli/`
+- ✅ System-specific key derivation (machine-bound encryption)
 
-### 🔹 Logging & Verbosity
+### 🔹 Logging & Verbosity ⏳
 - Integrate `zerolog` or Go `slog` for structured logging
 - `--debug` and `--silent` flags
 
-### 🔹 Configuration
+### 🔹 Configuration ⏳
 - Fully integrate `viper` for env/flag/config overrides
 - Consistent defaults across OSes
+- Account naming/labeling support
 
-### 🔹 Local Cache
+### 🔹 Local Cache ⏳
 - Use BoltDB for sender cache (faster re-runs)
 - Track unsubscribe status per sender
+- Cache IMAP server discovery results
 
 ---
 
-## 🌍 Phase 5 – Distribution & Release
+## 🌍 Phase 5 – Distribution & Release ✅ COMPLETE
 
-### 🔹 Automated Releases
-- Add [GoReleaser](https://goreleaser.com/) configuration
-- GitHub Actions workflow for tagged releases
+### 🔹 Automated Releases ✅
+- ✅ [GoReleaser](https://goreleaser.com/) configuration
+- ✅ GitHub Actions workflow for tagged releases
+- ✅ Automatic release on tag push
 
-### 🔹 Packaging
-- Build binaries for macOS, Linux, Windows
-- Publish Homebrew tap:
+### 🔹 Packaging ✅
+- ✅ Build binaries for macOS, Linux, Windows (amd64, arm64)
+- ✅ Homebrew tap:
+  ```bash
   brew install loickal/newsletter-cli/newsletter-cli
-
-arduino
-Copy code
-- Optional Docker image for automation:
+  ```
+- ✅ Winget package manager (Windows):
+  ```bash
+  winget install Loickal.NewsletterCLI
+  ```
+- ✅ Docker image:
+  ```bash
   docker run --rm -it -v ~/.config/newsletter-cli:/config loickal/newsletter-cli analyze
-
-yaml
-Copy code
+  ```
+- ✅ GUI launcher (double-click support on macOS, Linux, Windows)
 
 ---
 
@@ -131,10 +161,11 @@ Copy code
 
 | Version | Scope | Status |
 |----------|--------|--------|
-| **v0.2.0** | Auto-unsubscribe, flags, UI polish | 🟡 In progress |
-| **v0.3.0** | Config, caching, logging improvements | ⏳ Planned |
-| **v0.4.0** | CI/CD with GoReleaser & Docker | ⏳ Planned |
-| **v1.0.0** | Full release with docs + Homebrew support | 🔜 Future |
+| **v0.1.0** | MVP: IMAP connection, newsletter detection, basic TUI | ✅ Complete |
+| **v0.2.0** | Mass unsubscribe, mailto support, multiple accounts, age encryption | ✅ Complete |
+| **v0.3.0** | Config improvements, caching, logging, account naming | 🟡 In progress |
+| **v0.4.0** | CI/CD with GoReleaser, Homebrew, Winget | ✅ Complete |
+| **v1.0.0** | Stable release with all features + comprehensive docs | 🔜 Future |
 
 ---
 
@@ -170,4 +201,4 @@ lightweight, cross-platform, and privacy-respecting — no web tracking, no clou
 
 **Maintainer:** [@loickal](https://github.com/loickal)  
 **License:** MIT  
-**Version:** `v0.1.0` (MVP)
+**Current Version:** `v0.2.0`

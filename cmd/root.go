@@ -21,19 +21,19 @@ Get started:
   newsletter-cli login     Save your IMAP credentials
   newsletter-cli analyze   Analyze and manage newsletters`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// Load saved credentials
-		cfg, _ := config.Load()
+		// Load selected account
+		account, _ := config.GetSelectedAccount()
 		email := ""
 		password := ""
 		server := ""
-		if cfg != nil {
-			email = cfg.Email
+		if account != nil {
+			email = account.Email
 			var err error
-			password, err = config.Decrypt(cfg.Password)
+			password, err = config.Decrypt(account.Password)
 			if err != nil {
 				password = "" // Continue with empty password if decryption fails
 			}
-			server = cfg.Server
+			server = account.Server
 		}
 
 		// Get current version for update check

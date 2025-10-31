@@ -26,6 +26,7 @@ const (
 	screenAnalyzeInput
 	screenAnalyzing
 	screenDashboard
+	screenAccounts
 )
 
 type appModel struct {
@@ -69,6 +70,13 @@ type appModel struct {
 	savedEmail    string
 	savedPassword string
 	savedServer   string
+
+	// Account management screen
+	accountsList     list.Model
+	accounts         []config.Account
+	accountsMsg      string
+	accountToDelete  string // ID of account pending deletion
+	deleteConfirming bool
 }
 
 type updateInfo struct {
@@ -135,6 +143,13 @@ func NewAppModel(savedEmail, savedPassword, savedServer string, currentVersion s
 			action:      screenAnalyzeInput,
 		})
 	}
+
+	// Always show Accounts option
+	items = append(items, appMenuItem{
+		title:       "👤 Accounts",
+		description: "Manage email accounts",
+		action:      screenAccounts,
+	})
 
 	// Add Quit option at the end
 	items = append(items, appMenuItem{
@@ -273,6 +288,11 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				action:      screenAnalyzeInput,
 			},
 			appMenuItem{
+				title:       "👤 Accounts",
+				description: "Manage email accounts",
+				action:      screenAccounts,
+			},
+			appMenuItem{
 				title:       "❌ Quit",
 				description: "Exit the application",
 				action:      screenWelcome, // Will quit anyway
@@ -398,6 +418,8 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateAnalyzing(msg)
 	case screenDashboard:
 		return m.updateDashboard(msg)
+	case screenAccounts:
+		return m.updateAccounts(msg)
 	}
 
 	return m, nil
@@ -414,6 +436,18 @@ func (m appModel) updateWelcome(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if ok {
 				if i.action == screenWelcome {
 					return m, tea.Quit // Quit option
+				}
+				if i.action == screenAccounts {
+					// Load accounts and initialize accounts screen
+					accounts, err := config.GetAllAccounts()
+					if err != nil {
+						m.errMsg = "Failed to load accounts: " + err.Error()
+						return m, nil
+					}
+					m.accounts = accounts
+					m.screen = screenAccounts
+					// Initialize accounts list
+					return m.initAccountsList()
 				}
 				m.screen = i.action
 				switch m.screen {
@@ -727,18 +761,10 @@ func (m appModel) submitLogin() tea.Cmd {
 			return errorMsg("Connection failed: " + err.Error())
 		}
 
-		// Save config
-		encryptedPassword, err := config.Encrypt(password)
+		// Save account (use email as name if not provided)
+		_, err := config.AddAccount(email, server, password, email)
 		if err != nil {
-			return errorMsg("Failed to encrypt password: " + err.Error())
-		}
-		cfg := config.Config{
-			Email:    email,
-			Server:   server,
-			Password: encryptedPassword,
-		}
-		if err := config.Save(cfg); err != nil {
-			return errorMsg("Failed to save config: " + err.Error())
+			return errorMsg("Failed to save account: " + err.Error())
 		}
 
 		return loginSuccessMsg{
@@ -843,6 +869,8 @@ func (m appModel) View() string {
 		view = m.viewAnalyzing()
 	case screenDashboard:
 		view = m.viewDashboard()
+	case screenAccounts:
+		view = m.viewAccounts()
 	}
 
 	// Add error message if present
@@ -1089,6 +1117,236 @@ var (
 			Align(lipgloss.Center).
 			Padding(0, 2)
 )
+
+// Account list item
+type accountListItem struct {
+	account config.Account
+}
+
+func (i accountListItem) Title() string {
+	prefix := ""
+	cfg, _ := config.Load()
+	if cfg != nil && cfg.SelectedID == i.account.ID {
+		prefix = "✓ "
+	}
+	return prefix + i.account.Name
+}
+
+func (i accountListItem) Description() string {
+	desc := i.account.Email + " @ " + i.account.Server
+	cfg, _ := config.Load()
+	if cfg != nil && cfg.SelectedID == i.account.ID {
+		desc += " (active)"
+	}
+	return desc
+}
+
+func (i accountListItem) FilterValue() string {
+	return i.account.Name + " " + i.account.Email
+}
+
+// initAccountsList initializes the accounts list
+func (m appModel) initAccountsList() (tea.Model, tea.Cmd) {
+	items := []list.Item{}
+	for _, acc := range m.accounts {
+		items = append(items, accountListItem{account: acc})
+	}
+
+	delegate := list.NewDefaultDelegate()
+	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
+		Foreground(lipgloss.Color("229")).
+		Bold(true)
+	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.
+		Foreground(lipgloss.Color("219"))
+
+	l := list.New(items, delegate, 0, 0)
+	l.Title = "👤  Manage Accounts"
+	l.SetShowStatusBar(false)
+	l.SetFilteringEnabled(true)
+	l.Styles.Title = lipgloss.NewStyle().
+		Background(lipgloss.Color("63")).
+		Foreground(lipgloss.Color("230")).
+		Bold(true).
+		Padding(0, 1)
+
+	h, v := docStyle.GetFrameSize()
+	if m.width > 0 && m.height > 0 {
+		l.SetSize(m.width-h, m.height-v-7)
+	}
+
+	m.accountsList = l
+	m.accountsMsg = ""
+	m.deleteConfirming = false
+	m.accountToDelete = ""
+
+	return m, nil
+}
+
+// updateAccounts handles the accounts screen
+func (m appModel) updateAccounts(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		h, v := docStyle.GetFrameSize()
+		m.accountsList.SetSize(msg.Width-h, msg.Height-v-7)
+		return m, nil
+
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "q", "ctrl+c":
+			return m, tea.Quit
+		case "esc":
+			if m.deleteConfirming {
+				m.deleteConfirming = false
+				m.accountToDelete = ""
+				return m, nil
+			}
+			if m.accountsList.FilterState() == list.Filtering {
+				m.accountsList.ResetFilter()
+				return m, nil
+			}
+			m.screen = screenWelcome
+			return m, nil
+		case "enter":
+			if m.deleteConfirming {
+				// Confirm deletion
+				if err := config.DeleteAccount(m.accountToDelete); err != nil {
+					m.accountsMsg = "❌ Failed to delete account: " + err.Error()
+				} else {
+					m.accountsMsg = "✅ Account deleted"
+					// Reload accounts
+					accounts, _ := config.GetAllAccounts()
+					m.accounts = accounts
+					// Reinitialize list
+					return m.initAccountsList()
+				}
+				m.deleteConfirming = false
+				m.accountToDelete = ""
+				return m, nil
+			}
+			// Select account
+			i, ok := m.accountsList.SelectedItem().(accountListItem)
+			if ok {
+				if err := config.SetSelectedAccount(i.account.ID); err != nil {
+					m.accountsMsg = "❌ Failed to select account: " + err.Error()
+				} else {
+					m.accountsMsg = "✅ Selected account: " + i.account.Name
+
+					// Update saved credentials to the selected account
+					m.savedEmail = i.account.Email
+					m.savedServer = i.account.Server
+					decryptedPassword, err := config.Decrypt(i.account.Password)
+					if err != nil {
+						m.accountsMsg = "⚠️  Selected account but failed to decrypt password"
+						m.savedPassword = ""
+					} else {
+						m.savedPassword = decryptedPassword
+					}
+
+					// Update welcome list to show Analyze option if credentials are available
+					items := []list.Item{
+						appMenuItem{
+							title:       "🔐 Login",
+							description: "Save your IMAP credentials",
+							action:      screenLogin,
+						},
+					}
+					if m.savedEmail != "" && m.savedPassword != "" && m.savedServer != "" {
+						items = append(items, appMenuItem{
+							title:       "📊 Analyze",
+							description: "Analyze and manage newsletters",
+							action:      screenAnalyzeInput,
+						})
+					}
+					items = append(items, appMenuItem{
+						title:       "👤 Accounts",
+						description: "Manage email accounts",
+						action:      screenAccounts,
+					})
+					items = append(items, appMenuItem{
+						title:       "❌ Quit",
+						description: "Exit the application",
+						action:      screenWelcome,
+					})
+					m.welcomeList.SetItems(items)
+
+					// Reload accounts list to update active indicator
+					accounts, _ := config.GetAllAccounts()
+					m.accounts = accounts
+					updated, cmd := m.initAccountsList()
+					m = updated.(appModel)
+					return m, cmd
+				}
+			}
+			return m, nil
+		case "d":
+			if m.deleteConfirming {
+				return m, nil
+			}
+			// Delete account
+			i, ok := m.accountsList.SelectedItem().(accountListItem)
+			if ok {
+				cfg, _ := config.Load()
+				if cfg != nil && len(cfg.Accounts) <= 1 {
+					m.accountsMsg = "⚠️  Cannot delete the last account"
+					return m, nil
+				}
+				m.accountToDelete = i.account.ID
+				m.deleteConfirming = true
+				m.accountsMsg = fmt.Sprintf("⚠️  Delete %s? Press Enter to confirm, Esc to cancel", i.account.Name)
+			}
+			return m, nil
+		case "a":
+			// Add new account (go to login screen)
+			m.screen = screenLogin
+			// Clear login inputs
+			m.loginInputs[0].SetValue("")
+			m.loginInputs[1].SetValue("")
+			m.loginInputs[2].SetValue("")
+			m.loginInputs[0].Focus()
+			for i := 1; i < len(m.loginInputs); i++ {
+				m.loginInputs[i].Blur()
+			}
+			return m, nil
+		case "/":
+			m.accountsList.ResetSelected()
+			return m, nil
+		}
+	}
+
+	var cmd tea.Cmd
+	m.accountsList, cmd = m.accountsList.Update(msg)
+	return m, cmd
+}
+
+// viewAccounts renders the accounts screen
+func (m appModel) viewAccounts() string {
+	if len(m.accounts) == 0 {
+		emptyMsg := "No accounts configured\n\nPress 'a' to add an account"
+		if m.deleteConfirming {
+			emptyMsg = "Cannot delete - no accounts available"
+		}
+		return docStyle.Render(
+			emptyStateStyle.Render(emptyMsg) + "\n\n" +
+				helpStyle.Render("Press 'a' to add account  [Esc] Back  [q] Quit"),
+		)
+	}
+
+	listView := docStyle.Render(m.accountsList.View())
+
+	status := ""
+	if m.accountsMsg != "" {
+		msgStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Padding(0, 1)
+		status = "\n" + msgStyle.Render(m.accountsMsg)
+	}
+
+	helpText := "[↑↓] Navigate  [Enter] Select  [a] Add  [d] Delete  [/] Search  [Esc] Back  [q] Quit"
+	if m.deleteConfirming {
+		helpText = "[Enter] Confirm Delete  [Esc] Cancel"
+	}
+	help := helpStyle.Render(helpText)
+
+	return listView + status + "\n" + help
+}
 
 // RunAppSync runs the app synchronously (for use from commands)
 // initialScreen can be "login", "analyze", or "" for welcome

@@ -20,11 +20,16 @@ No servers, no tracking, no nonsense.
 
 ## ✨ Features
 
-✅ Connect via IMAP (Gmail, Outlook, etc.)  
+✅ Connect via IMAP (Gmail, Outlook, etc.) with auto-discovery  
 ✅ Smart newsletter detection  
 ✅ Aggregated sender statistics  
 ✅ Interactive TUI built with [Charm Bracelet Bubble Tea](https://github.com/charmbracelet/bubbletea)  
+✅ Mass unsubscribe with multiselect support  
+✅ Automatic mailto: unsubscribe via SMTP  
 ✅ One-click unsubscribe via `List-Unsubscribe` header  
+✅ Persistent tracking of unsubscribed newsletters  
+✅ Multiple account management (add, switch, delete accounts)  
+✅ Secure encryption using [age](https://filippo.io/age) (ChaCha20Poly1305)  
 ✅ Encrypted local credential storage  
 ✅ Config saved under `~/.config/newsletter-cli/config.json`
 
@@ -35,115 +40,165 @@ No servers, no tracking, no nonsense.
 ### 🐹 Go Install
 ```bash
 go install github.com/loickal/newsletter-cli@latest
-🍺 Homebrew (coming soon)
-bash
-Copy code
-brew install loickal/newsletter-cli/newsletter-cli
-🐳 Docker
-bash
-Copy code
+```
+
+### 🍺 Homebrew
+```bash
+brew tap loickal/newsletter-cli
+brew install newsletter-cli
+```
+
+### 🪟 Winget (Windows)
+```bash
+winget install Loickal.NewsletterCLI
+```
+
+### 🐳 Docker
+```bash
 docker run --rm -it -v ~/.config/newsletter-cli:/config loickal/newsletter-cli analyze
-🚀 Quick Start
-1️⃣ Login once
-bash
-Copy code
+```
+## 🚀 Quick Start
+
+### 1️⃣ Login once
+```bash
 newsletter-cli login
-Enter your IMAP credentials — they’re verified and saved locally (encrypted).
+```
+Enter your IMAP credentials — they're verified and saved locally (encrypted with age encryption).
 
-2️⃣ Analyze newsletters
-bash
-Copy code
+### 2️⃣ Analyze newsletters
+```bash
 newsletter-cli analyze
-➡️ Displays an interactive dashboard like:
+```
 
-scss
-Copy code
-╭────────────────────────────────────────────╮
-│  📬 Newsletter Overview (Last 30 Days)     │
-│────────────────────────────────────────────│
-│  ▸ GitHub News Digest          (12 emails) │
-│    AWS Weekly Updates          (5 emails)  │
-│    Stack Overflow Digest       (3 emails)  │
-│                                            │
-│  [↑↓] Navigate   [u] Unsubscribe  [q] Quit │
-╰────────────────────────────────────────────╯
-Press u to unsubscribe, q to quit.
+➡️ Displays an interactive dashboard:
+```
+╭──────────────────────────────────────────────╮
+│  📬 Newsletter Overview                       │
+│  Total: 5 newsletters • 42 emails            │
+│──────────────────────────────────────────────│
+│  ✓✓ GitHub News Digest          (12 emails)  │
+│     ✅ Already unsubscribed                   │
+│  ▸ AWS Weekly Updates          (5 emails)   │
+│     🔗 unsubscribe.link/abc123               │
+│  📬 Stack Overflow Digest       (3 emails)  │
+│     🔗 mailto:unsubscribe@stackoverflow.com │
+│                                              │
+│  [↑↓] Navigate  [Space] Select  [U] Mass    │
+│  [u] Single  [/] Search  [Esc] Clear  [q]   │
+╰──────────────────────────────────────────────╯
+```
 
-⚙️ Configuration
-Path	Description
-~/.config/newsletter-cli/config.json	Stores email, IMAP server, and encrypted password
-~/.cache/newsletter-cli/ (planned)	Local cache of senders and unsubscribe links
+### 3️⃣ Manage Accounts
+```bash
+newsletter-cli
+```
+Navigate to "👤 Accounts" to:
+- Add multiple email accounts
+- Switch between accounts
+- Delete accounts
+- View active account
 
-You can override credentials using CLI flags (coming soon):
+### Keybindings
 
-bash
-Copy code
-newsletter-cli analyze --email foo@example.com --server imap.example.com:993
-🗺️ Roadmap
-The full roadmap is available in ROADMAP.md.
-Highlights:
+**Dashboard:**
+- `↑↓` - Navigate newsletters
+- `Space` - Select/deselect for mass unsubscribe
+- `U` - Unsubscribe from all selected newsletters
+- `u` - Single unsubscribe (opens browser for HTTP links)
+- `/` - Search/filter newsletters
+- `Esc` - Clear selection
+- `q` - Quit
 
-Phase	Focus
-v0.2.0	Auto-unsubscribe & CLI flags
-v0.3.0	Caching, logging, better config
-v0.4.0	CI/CD & release pipeline
-v1.0.0	Stable release with Homebrew support
+## ⚙️ Configuration
 
-🧩 Tech Stack
-Area	Library
-CLI Framework	spf13/cobra
-UI / TUI	charmbracelet/bubbletea, lipgloss
-IMAP Access	emersion/go-imap
-Config	spf13/viper
-Packaging	GoReleaser (planned)
+| Path | Description |
+|------|-------------|
+| `~/.config/newsletter-cli/config.json` | Stores all email accounts with encrypted passwords |
+| `~/.config/newsletter-cli/unsubscribed.json` | Tracks newsletters you've unsubscribed from |
 
-🧪 Development
+### CLI Flags
+
+You can override credentials using CLI flags:
+```bash
+newsletter-cli analyze --email foo@example.com --server imap.example.com:993 --days 60
+```
+
+### Multiple Accounts
+
+Manage multiple email accounts:
+- Each account is stored with encrypted credentials
+- Switch between accounts from the Accounts screen
+- Each account has its own unsubscribe history
+
+## 🗺️ Roadmap
+
+The full roadmap is available in [ROADMAP.md](ROADMAP.md).
+
+| Phase | Focus | Status |
+|-------|-------|--------|
+| **v0.2.0** | Mass unsubscribe, mailto support, multiple accounts | ✅ Complete |
+| **v0.3.0** | Caching, logging, better config | 🟡 Planned |
+| **v0.4.0** | CI/CD & release pipeline | ✅ Complete |
+| **v1.0.0** | Stable release with all features | 🔜 Future |
+
+## 🧩 Tech Stack
+
+| Area | Library |
+|------|---------|
+| CLI Framework | spf13/cobra |
+| UI / TUI | charmbracelet/bubbletea, lipgloss |
+| IMAP Access | emersion/go-imap |
+| Encryption | filippo.io/age |
+| SMTP | net/smtp (for mailto unsubscribe) |
+| Packaging | GoReleaser |
+
+## 🧪 Development
+
 Clone and run locally:
-
-bash
-Copy code
+```bash
 git clone https://github.com/loickal/newsletter-cli.git
 cd newsletter-cli
 go run main.go analyze
-Run all tests:
+```
 
-bash
-Copy code
+Run all tests:
+```bash
 go test ./...
-🧠 Semantic Commits
+```
+## 🧠 Semantic Commits
+
 Follow the Conventional Commits style:
 
-Type	Example
-feat(ui): add search filter to TUI	
-feat(unsubscribe): implement --all flag	
-fix(imap): handle auth errors gracefully	
-chore(release): bump to v0.2.0	
+| Type | Example |
+|------|---------|
+| `feat(ui)` | add search filter to TUI |
+| `feat(unsubscribe)` | implement mass unsubscribe |
+| `fix(imap)` | handle auth errors gracefully |
+| `chore(release)` | bump to v0.2.0 |
 
-🤝 Contributing
+## 🤝 Contributing
+
 Contributions are welcome!
 
-Fork the repo
+1. Fork the repo
+2. Create a feature branch (`feat/add-spinner`)
+3. Write clear, semantic commits
+4. Open a PR → review & merge
 
-Create a feature branch (feat/add-spinner)
+Please read [ROADMAP.md](ROADMAP.md) for feature planning before proposing major changes.
 
-Write clear, semantic commits
+## 🪪 License
 
-Open a PR → review & merge
-
-Please read ROADMAP.md for feature planning before proposing major changes.
-
-🪪 License
 MIT License © 2025 Loïc Kalbermatter
 
-🌟 Acknowledgements
+## 🌟 Acknowledgements
+
 Thanks to the maintainers of:
-
-emersion/go-imap
-
-charmbracelet/bubbletea
-
-spf13/cobra
+- [emersion/go-imap](https://github.com/emersion/go-imap)
+- [charmbracelet/bubbletea](https://github.com/charmbracelet/bubbletea)
+- [spf13/cobra](https://github.com/spf13/cobra)
+- [filippo.io/age](https://filippo.io/age)
 
 …and everyone contributing to open-source terminal tooling ❤️
 
-“Take control of your inbox. One unsubscribe at a time.” — newsletter-cli
+> "Take control of your inbox. One unsubscribe at a time." — newsletter-cli
