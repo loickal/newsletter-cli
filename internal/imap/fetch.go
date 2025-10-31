@@ -1,9 +1,12 @@
 package imap
 
 import (
+	"bytes"
 	"crypto/tls"
 	"fmt"
 	"log"
+	"net/mail"
+	"regexp"
 	"strings"
 	"time"
 
@@ -12,8 +15,9 @@ import (
 )
 
 type NewsletterStat struct {
-	Sender string
-	Count  int
+	Sender      string
+	Count       int
+	Unsubscribe string
 }
 
 // FetchNewsletterStats connects to IMAP, fetches messages and groups newsletters.
@@ -29,13 +33,11 @@ func FetchNewsletterStats(server, email, password string, since time.Time) ([]Ne
 		return nil, fmt.Errorf("login failed: %w", err)
 	}
 
-	// Select INBOX
 	_, err = c.Select("INBOX", false)
 	if err != nil {
 		return nil, fmt.Errorf("select INBOX failed: %w", err)
 	}
 
-	// Build search criteria
 	criteria := imap.NewSearchCriteria()
 	criteria.Since = since
 	ids, err := c.Search(criteria)
@@ -52,21 +54,21 @@ func FetchNewsletterStats(server, email, password string, since time.Time) ([]Ne
 	messages := make(chan *imap.Message, 10)
 	done := make(chan error, 1)
 	go func() {
-		done <- c.Fetch(seqset, []imap.FetchItem{imap.FetchEnvelope, imap.FetchBodyStructure}, messages)
+		section := &imap.BodySectionName{}
+		done <- c.Fetch(seqset, []imap.FetchItem{imap.FetchEnvelope, section.FetchItem()}, messages)
 	}()
 
-	stats := map[string]int{}
+	type seen struct {
+		count int
+		link  string
+	}
+	stats := map[string]seen{}
+
 	for msg := range messages {
-		if msg.Envelope == nil {
+		if msg.Envelope == nil || len(msg.Envelope.From) == 0 {
 			continue
 		}
-
-		from := ""
-		if len(msg.Envelope.From) > 0 {
-			from = msg.Envelope.From[0].Address()
-		}
-
-		// Skip personal or reply emails heuristically
+		from := msg.Envelope.From[0].Address()
 		if from == "" || strings.Contains(from, email) {
 			continue
 		}
@@ -74,7 +76,24 @@ func FetchNewsletterStats(server, email, password string, since time.Time) ([]Ne
 			continue
 		}
 
-		stats[from]++
+		// Parse raw header for List-Unsubscribe
+		var link string
+		if r := msg.GetBody(&imap.BodySectionName{}); r != nil {
+			buf := new(bytes.Buffer)
+			buf.ReadFrom(r)
+			m, err := mail.ReadMessage(bytes.NewReader(buf.Bytes()))
+			if err == nil {
+				lh := m.Header.Get("List-Unsubscribe")
+				link = extractUnsubscribeLink(lh)
+			}
+		}
+
+		entry := stats[from]
+		entry.count++
+		if entry.link == "" && link != "" {
+			entry.link = link
+		}
+		stats[from] = entry
 	}
 
 	if err := <-done; err != nil {
@@ -82,14 +101,12 @@ func FetchNewsletterStats(server, email, password string, since time.Time) ([]Ne
 	}
 
 	var results []NewsletterStat
-	for sender, count := range stats {
-		results = append(results, NewsletterStat{Sender: sender, Count: count})
+	for sender, s := range stats {
+		results = append(results, NewsletterStat{Sender: sender, Count: s.count, Unsubscribe: s.link})
 	}
-
 	return results, nil
 }
 
-// crude heuristic to detect newsletters
 func isLikelyNewsletter(from, subject string) bool {
 	keywords := []string{"newsletter", "digest", "update", "offers", "weekly", "report", "news"}
 	for _, k := range keywords {
@@ -104,4 +121,21 @@ func isLikelyNewsletter(from, subject string) bool {
 		}
 	}
 	return false
+}
+
+var reLink = regexp.MustCompile(`<([^>]+)>`)
+
+func extractUnsubscribeLink(header string) string {
+	if header == "" {
+		return ""
+	}
+	m := reLink.FindStringSubmatch(header)
+	if len(m) > 1 {
+		return m[1]
+	}
+	// Sometimes it’s just a raw URL or mailto
+	if strings.HasPrefix(header, "http") || strings.HasPrefix(header, "mailto") {
+		return strings.TrimSpace(header)
+	}
+	return ""
 }
