@@ -101,13 +101,17 @@ winget:
       - terminal
       - tui
     repository:
-      owner: microsoft
+      owner: loickal
       name: winget-pkgs
-      branch: master
+      branch: "{{.ProjectName}}-{{.Version}}"
       token: "{{ .Env.WINGET_TOKEN }}"
       pull_request:
         enabled: true
         draft: false
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master
     commit_author:
       name: "Loïc Kalbermatter"
       email: "loickal@users.noreply.github.com"
