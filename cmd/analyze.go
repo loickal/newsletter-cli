@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loickal/newsletter-cli/internal/imap"
+	"github.com/loickal/newsletter-cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -46,9 +47,9 @@ var analyzeCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		fmt.Println("\n📊 Newsletter summary:\n")
-		for _, s := range stats {
-			fmt.Printf("• %-40s %3d emails\n", s.Sender, s.Count)
+		// 🧋 launch TUI
+		if err := ui.Run(stats); err != nil {
+			os.Exit(1)
 		}
 	},
 }
