@@ -1,59 +1,33 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"strings"
-	"syscall"
 
 	"github.com/loickal/newsletter-cli/internal/config"
-	"github.com/loickal/newsletter-cli/internal/imap"
+	"github.com/loickal/newsletter-cli/internal/ui"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 var loginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Login to your email account via IMAP",
 	Run: func(cmd *cobra.Command, args []string) {
-		reader := bufio.NewReader(os.Stdin)
+		// Load saved credentials (if any) to pre-fill the form
+		cfg, _ := config.Load()
+		email := ""
+		password := ""
+		server := ""
+		if cfg != nil {
+			email = cfg.Email
+			password = config.Decrypt(cfg.Password)
+			server = cfg.Server
+		}
 
-		fmt.Print("📧 Email: ")
-		email, _ := reader.ReadString('\n')
-		email = strings.TrimSpace(email)
-
-		fmt.Print("🔒 Password: ")
-		bytePassword, err := term.ReadPassword(int(syscall.Stdin))
-		fmt.Println() // New line after password input
-		if err != nil {
-			fmt.Printf("❌ Error reading password: %v\n", err)
+		if err := ui.RunAppSync(email, password, server, 0, false, "login"); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		pass := strings.TrimSpace(string(bytePassword))
-
-		fmt.Print("🌐 IMAP server (e.g. imap.gmail.com:993): ")
-		server, _ := reader.ReadString('\n')
-		server = strings.TrimSpace(server)
-
-		fmt.Print("\n🔐 Testing IMAP connection...")
-		if err := imap.ConnectIMAP(email, pass, server); err != nil {
-			fmt.Printf("\n❌ Connection failed: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println(" ✅")
-
-		cfg := config.Config{
-			Email:    email,
-			Server:   server,
-			Password: config.Encrypt(pass),
-		}
-		if err := config.Save(cfg); err != nil {
-			fmt.Printf("❌ Failed to save config: %v\n", err)
-			os.Exit(1)
-		}
-
-		fmt.Printf("✅ Logged in and saved credentials for %s\n", email)
 	},
 }
 

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/loickal/newsletter-cli/internal/config"
+	"github.com/loickal/newsletter-cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -19,13 +21,22 @@ Get started:
   newsletter-cli login     Save your IMAP credentials
   newsletter-cli analyze   Analyze and manage newsletters`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("📬 Newsletter CLI")
-		fmt.Println()
-		fmt.Println("Get started:")
-		fmt.Println("  newsletter-cli login     Save your IMAP credentials")
-		fmt.Println("  newsletter-cli analyze   Analyze and manage newsletters")
-		fmt.Println()
-		fmt.Println("Use 'newsletter-cli --help' for more information.")
+		// Load saved credentials
+		cfg, _ := config.Load()
+		email := ""
+		password := ""
+		server := ""
+		if cfg != nil {
+			email = cfg.Email
+			password = config.Decrypt(cfg.Password)
+			server = cfg.Server
+		}
+
+		// Show unified UI - it will handle welcome screen and navigation
+		if err := ui.RunAppSync(email, password, server, 0, false, ""); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	},
 }
 
