@@ -40,8 +40,11 @@ type appModel struct {
 	currentVersion  string
 
 	// Login screen
-	loginInputs  []textinput.Model
-	loginFocused int
+	loginInputs         []textinput.Model
+	loginFocused        int
+	discoveringServer   bool
+	serverStatusMsg     string
+	lastDiscoveredEmail string // Track last email we discovered for to avoid re-checking same email
 
 	// Analyze input screen
 	analyzeInputs  []textinput.Model
@@ -208,8 +211,20 @@ func (m appModel) checkForUpdate(currentVersion string) tea.Cmd {
 	}
 }
 
+func (m appModel) discoverServer(email string) tea.Cmd {
+	return func() tea.Msg {
+		server, err := imap.DiscoverIMAPServer(email)
+		return serverDiscoveredMsg{server: server, err: err}
+	}
+}
+
 type updateCheckCompleteMsg struct {
 	update *updateInfo
+}
+
+type serverDiscoveredMsg struct {
+	server string
+	err    error
 }
 
 func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -314,10 +329,34 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errorMsg:
 		m.errMsg = string(msg)
 		// Stay on current screen but show error
+		// Ensure inputs remain focused and editable
+		if m.screen == screenLogin {
+			// Re-focus the current input field so user can continue editing
+			for i := range m.loginInputs {
+				if i == m.loginFocused {
+					m.loginInputs[i].Focus()
+				} else {
+					m.loginInputs[i].Blur()
+				}
+			}
+		}
 		return m, nil
 
 	case updateCheckCompleteMsg:
 		m.updateAvailable = msg.update
+		return m, nil
+
+	case serverDiscoveredMsg:
+		m.discoveringServer = false
+		if msg.err != nil {
+			m.serverStatusMsg = fmt.Sprintf("⚠️  Could not discover server: %v", msg.err)
+			// Clear last discovered so we can retry
+			m.lastDiscoveredEmail = ""
+		} else {
+			m.serverStatusMsg = fmt.Sprintf("✅ Discovered: %s", msg.server)
+			// Auto-fill the server field
+			m.loginInputs[2].SetValue(msg.server)
+		}
 		return m, nil
 	}
 
@@ -357,6 +396,13 @@ func (m appModel) updateWelcome(msg tea.Msg) (tea.Model, tea.Cmd) {
 					for i := 1; i < len(m.loginInputs); i++ {
 						m.loginInputs[i].Blur()
 					}
+					// Try to discover server if email is already filled
+					email := strings.TrimSpace(m.loginInputs[0].Value())
+					if email != "" {
+						m.discoveringServer = true
+						m.serverStatusMsg = "🔍 Discovering IMAP server..."
+						return m, m.discoverServer(email)
+					}
 				case screenAnalyzeInput:
 					// Always show the input screen to let user specify days
 					m.analyzeInputs[0].Focus()
@@ -373,16 +419,70 @@ func (m appModel) updateWelcome(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m appModel) updateLogin(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		// Handle spinner updates during discovery
+		if m.discoveringServer {
+			var cmd tea.Cmd
+			m.analyzingSpinner, cmd = m.analyzingSpinner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc", "ctrl+c":
 			m.screen = screenWelcome
+			m.discoveringServer = false
+			m.serverStatusMsg = ""
 			return m, nil
+		case "ctrl+r":
+			// Retry server discovery (Ctrl+R to avoid conflicts with typing 'r' in email)
+			email := strings.TrimSpace(m.loginInputs[0].Value())
+			if email != "" {
+				m.lastDiscoveredEmail = "" // Clear so it will check again
+				m.discoveringServer = true
+				m.serverStatusMsg = "🔍 Discovering IMAP server..."
+				return m, m.discoverServer(email)
+			}
 		case "tab", "shift+tab", "enter", "up", "down":
 			// Handle tab/enter navigation
 			if msg.String() == "enter" && m.loginFocused == len(m.loginInputs)-1 {
 				// Submit login
 				return m, m.submitLogin()
+			}
+
+			// Trigger discovery when leaving email field (tab/down) or pressing enter on email field
+			if m.loginFocused == 0 && (msg.String() == "tab" || msg.String() == "down" || msg.String() == "enter") {
+				email := strings.TrimSpace(m.loginInputs[0].Value())
+				if email != "" && strings.Contains(email, "@") && strings.Count(email, "@") == 1 && !m.discoveringServer {
+					parts := strings.Split(email, "@")
+					if len(parts) == 2 {
+						domain := strings.TrimSpace(parts[1])
+						if domain != "" && strings.Contains(domain, ".") {
+							// Try discovery when leaving email field or pressing enter
+							m.discoveringServer = true
+							m.serverStatusMsg = "🔍 Discovering IMAP server..."
+							m.lastDiscoveredEmail = email // Track to avoid re-checking if they come back
+							// If tab/down, switch to next field; if enter, stay on email field
+							if msg.String() != "enter" {
+								m.loginFocused++
+								for i := range m.loginInputs {
+									if i == m.loginFocused {
+										m.loginInputs[i].Focus()
+									} else {
+										m.loginInputs[i].Blur()
+									}
+								}
+							}
+							return m, m.discoverServer(email)
+						}
+					}
+				}
+				// If discovery didn't trigger, continue with normal field navigation
+				if msg.String() == "enter" {
+					// Stay on email field if enter was pressed
+					return m, nil
+				}
 			}
 
 			// Cycle through inputs
@@ -409,9 +509,27 @@ func (m appModel) updateLogin(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Clear error message when user starts typing
+	if m.errMsg != "" {
+		// Check if this is a keypress that would modify input
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			switch keyMsg.String() {
+			case "tab", "shift+tab", "enter", "esc", "ctrl+c", "ctrl+r":
+				// Navigation keys - don't clear error
+			default:
+				// User is typing - clear the error
+				m.errMsg = ""
+			}
+		}
+	}
+
 	// Update focused input
 	var cmd tea.Cmd
 	m.loginInputs[m.loginFocused], cmd = m.loginInputs[m.loginFocused].Update(msg)
+
+	// Server discovery only happens when switching away from email field (handled above)
+	// No automatic discovery while typing
+
 	return m, cmd
 }
 
@@ -655,9 +773,28 @@ func (m appModel) viewLogin() string {
 	}
 
 	content := title + "\n\n" + strings.Join(inputs, "\n\n")
-	help := helpStyle.Render("[Tab] Next  [Shift+Tab] Previous  [Enter] Submit  [Esc] Back")
 
-	return docStyle.Render(content + "\n\n" + help)
+	// Show server discovery status
+	statusMsg := ""
+	if m.discoveringServer || m.serverStatusMsg != "" {
+		statusStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("220")).
+			MarginTop(1)
+		if m.discoveringServer {
+			statusMsg = "\n" + statusStyle.Render(m.analyzingSpinner.View()+" "+m.serverStatusMsg)
+		} else if m.serverStatusMsg != "" {
+			if strings.HasPrefix(m.serverStatusMsg, "✅") {
+				statusStyle = statusStyle.Foreground(lipgloss.Color("82"))
+			} else {
+				statusStyle = statusStyle.Foreground(lipgloss.Color("196"))
+			}
+			statusMsg = "\n" + statusStyle.Render(m.serverStatusMsg)
+		}
+	}
+
+	help := helpStyle.Render("[Tab] Next  [Shift+Tab] Previous  [Ctrl+R] Retry Discovery  [Enter] Submit  [Esc] Back")
+
+	return docStyle.Render(content + statusMsg + "\n\n" + help)
 }
 
 func (m appModel) viewAnalyzeInput() string {

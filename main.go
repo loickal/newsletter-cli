@@ -2,7 +2,7 @@ package main
 
 import "github.com/loickal/newsletter-cli/cmd"
 
-var version = "0.1.4"
+var version = "0.1.5"
 
 func main() {
 	cmd.SetVersion(version)
