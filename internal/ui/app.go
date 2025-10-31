@@ -602,6 +602,11 @@ func (m appModel) viewWelcome() string {
 		"A beautiful TUI-based CLI to analyze, list and unsubscribe\nfrom newsletters using your IMAP inbox.",
 	)
 
+	// Update title with version if available
+	if m.currentVersion != "" {
+		m.welcomeList.Title = fmt.Sprintf("📬  Newsletter CLI v%s", m.currentVersion)
+	}
+
 	listView := docStyle.Render(m.welcomeList.View())
 
 	// Show update notification if available
