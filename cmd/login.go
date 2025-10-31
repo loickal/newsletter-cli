@@ -24,7 +24,8 @@ var loginCmd = &cobra.Command{
 			server = cfg.Server
 		}
 
-		if err := ui.RunAppSync(email, password, server, 0, false, "login"); err != nil {
+		currentVersion := getVersion()
+		if err := ui.RunAppSync(email, password, server, 0, false, "login", currentVersion); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
