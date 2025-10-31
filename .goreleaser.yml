@@ -79,3 +79,26 @@ release:
   github:
     owner: loickal
     name: newsletter-cli
+
+# 🍺 Modern Homebrew (Cask-based distribution)
+homebrew_casks:
+  - name: newsletter-cli
+    directory: Casks
+    url:
+      verified: github.com/loickal/newsletter-cli
+    homepage: "https://github.com/loickal/newsletter-cli"
+    license: "MIT"
+    description: "A beautiful, privacy-friendly CLI tool to analyze and unsubscribe from newsletters."
+    repository:
+      owner: loickal
+      name: homebrew-newsletter-cli
+    commit_author:
+      name: "Loïc Kalbermatter"
+      email: "loickal@users.noreply.github.com"
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr",
+              args: ["-dr", "com.apple.quarantine", "#{staged_path}/newsletter-cli"]
+          end
