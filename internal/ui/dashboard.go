@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
-	"syscall"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -229,13 +228,6 @@ func openBrowser(url string) error {
 	}
 
 	browserCmd := exec.Command(cmd, args...)
-
-	// Set process attributes to detach from parent (Unix-like systems only)
-	if runtime.GOOS != "windows" {
-		browserCmd.SysProcAttr = &syscall.SysProcAttr{
-			Setpgid: true,
-		}
-	}
 
 	if err := browserCmd.Start(); err != nil {
 		return fmt.Errorf("failed to start browser: %w", err)
