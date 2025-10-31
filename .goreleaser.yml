@@ -80,6 +80,38 @@ release:
     owner: loickal
     name: newsletter-cli
 
+# 📦 Winget Package Manager
+winget:
+  - name: newsletter-cli
+    publisher: Loïc Kalbermatter
+    publisher_url: https://github.com/loickal
+    publisher_support_url: https://github.com/loickal/newsletter-cli/issues/new
+    short_description: "A beautiful, privacy-friendly CLI tool to analyze and unsubscribe from newsletters."
+    description: "A beautiful, privacy-friendly terminal tool to analyze and unsubscribe from newsletters — right from your inbox. Connects via IMAP, identifies newsletter senders, and provides an interactive TUI for management."
+    homepage: "https://github.com/loickal/newsletter-cli"
+    license: "MIT"
+    license_url: "https://github.com/loickal/newsletter-cli/blob/main/LICENSE"
+    package_identifier: Loickal.NewsletterCLI
+    tags:
+      - cli
+      - newsletter
+      - email
+      - imap
+      - golang
+      - terminal
+      - tui
+    repository:
+      owner: microsoft
+      name: winget-pkgs
+      branch: main
+      token: "{{ .Env.WINGET_TOKEN }}"
+      pull_request:
+        enabled: true
+        draft: false
+    commit_author:
+      name: "Loïc Kalbermatter"
+      email: "loickal@users.noreply.github.com"
+
 # 🍺 Modern Homebrew (Cask-based distribution)
 homebrew_casks:
   - name: newsletter-cli
