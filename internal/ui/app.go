@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/loickal/newsletter-cli/internal/config"
 	"github.com/loickal/newsletter-cli/internal/imap"
+	"github.com/loickal/newsletter-cli/internal/unsubscribe"
 	"github.com/loickal/newsletter-cli/internal/update"
 )
 
@@ -54,11 +55,15 @@ type appModel struct {
 	analyzingSpinner spinner.Model
 
 	// Dashboard screen
-	dashboardList    list.Model
-	dashboardStats   []imap.NewsletterStat
-	dashboardMsg     string
-	totalEmails      int
-	totalNewsletters int
+	dashboardList         list.Model
+	dashboardStats        []imap.NewsletterStat
+	dashboardMsg          string
+	dashboardSelected     map[string]bool // Track selected newsletters by sender
+	dashboardUnsubscribed map[string]bool // Track which newsletters are already unsubscribed
+	unsubscribing         bool
+	unsubscribeResults    []unsubscribeResultMsg
+	totalEmails           int
+	totalNewsletters      int
 
 	// Saved credentials (for skipping login)
 	savedEmail    string
@@ -163,18 +168,22 @@ func NewAppModel(savedEmail, savedPassword, savedServer string, currentVersion s
 		serverInput.SetValue(savedServer)
 	}
 
+	// Initialize unsubscribed list
+	unsubscribedList, _ := config.GetUnsubscribedList()
+
 	return appModel{
-		screen:           screenWelcome,
-		welcomeList:      welcomeList,
-		loginInputs:      []textinput.Model{emailInput, passwordInput, serverInput},
-		loginFocused:     0,
-		analyzeInputs:    []textinput.Model{daysInput},
-		analyzeFocused:   0,
-		analyzingSpinner: sp,
-		savedEmail:       savedEmail,
-		savedPassword:    savedPassword,
-		savedServer:      savedServer,
-		currentVersion:   currentVersion,
+		screen:                screenWelcome,
+		welcomeList:           welcomeList,
+		loginInputs:           []textinput.Model{emailInput, passwordInput, serverInput},
+		loginFocused:          0,
+		analyzeInputs:         []textinput.Model{daysInput},
+		analyzeFocused:        0,
+		analyzingSpinner:      sp,
+		savedEmail:            savedEmail,
+		savedPassword:         savedPassword,
+		savedServer:           savedServer,
+		currentVersion:        currentVersion,
+		dashboardUnsubscribed: unsubscribedList,
 	}
 }
 
@@ -225,6 +234,10 @@ type updateCheckCompleteMsg struct {
 type serverDiscoveredMsg struct {
 	server string
 	err    error
+}
+
+type unsubscribeResultMsg struct {
+	results []unsubscribe.UnsubscribeResult
 }
 
 func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -284,14 +297,20 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return msg.stats[i].Count > msg.stats[j].Count
 		})
 
+		// Load unsubscribed list
+		unsubscribedList, _ := config.GetUnsubscribedList()
+		m.dashboardUnsubscribed = unsubscribedList
+
 		// Create dashboard
 		items := []list.Item{}
 		totalEmails := 0
 		for _, s := range msg.stats {
 			items = append(items, dashboardListItem{
-				title: s.Sender,
-				count: s.Count,
-				link:  s.Unsubscribe,
+				title:        s.Sender,
+				count:        s.Count,
+				link:         s.Unsubscribe,
+				selected:     m.dashboardSelected[s.Sender], // Preserve selection state
+				unsubscribed: m.dashboardUnsubscribed[s.Sender],
 			})
 			totalEmails += s.Count
 		}
@@ -320,6 +339,13 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.dashboardList = l
 		m.dashboardStats = msg.stats
+		m.dashboardSelected = make(map[string]bool)
+		// dashboardUnsubscribed already loaded above
+		if m.dashboardUnsubscribed == nil {
+			m.dashboardUnsubscribed = make(map[string]bool)
+		}
+		m.unsubscribing = false
+		m.unsubscribeResults = nil
 		m.totalEmails = totalEmails
 		m.totalNewsletters = len(msg.stats)
 		m.screen = screenDashboard
@@ -567,12 +593,77 @@ func (m appModel) updateAnalyzing(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m appModel) updateDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Handle unsubscribe results
+	if msg, ok := msg.(unsubscribeResultMsg); ok {
+		m.unsubscribing = false
+		m.unsubscribeResults = []unsubscribeResultMsg{msg}
+
+		// Build result summary
+		successCount := 0
+		failCount := 0
+		for _, result := range msg.results {
+			if result.Success {
+				successCount++
+				// Remove from selected after successful unsubscribe
+				delete(m.dashboardSelected, result.Sender)
+				// Save to unsubscribed list
+				m.dashboardUnsubscribed[result.Sender] = true
+				config.AddUnsubscribed(result.Sender)
+			} else {
+				failCount++
+			}
+		}
+
+		if successCount > 0 {
+			m.dashboardMsg = fmt.Sprintf("✅ Successfully unsubscribed from %d newsletter(s)", successCount)
+		}
+		if failCount > 0 {
+			m.dashboardMsg += fmt.Sprintf(" | ❌ Failed: %d", failCount)
+		}
+
+		// Update list items to reflect unsubscribed status
+		items := m.dashboardList.Items()
+		for idx, item := range items {
+			if item, ok := item.(dashboardListItem); ok {
+				item.unsubscribed = m.dashboardUnsubscribed[item.title]
+				items[idx] = item
+			}
+		}
+		m.dashboardList.SetItems(items)
+
+		return m, nil
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case " ": // Spacebar for multiselect
+			if m.unsubscribing {
+				return m, nil // Don't allow selection while unsubscribing
+			}
+			i, ok := m.dashboardList.SelectedItem().(dashboardListItem)
+			if ok {
+				// Toggle selection
+				if m.dashboardSelected[i.title] {
+					delete(m.dashboardSelected, i.title)
+				} else {
+					m.dashboardSelected[i.title] = true
+				}
+				// Update the list item to reflect selection state
+				items := m.dashboardList.Items()
+				for idx, item := range items {
+					if item, ok := item.(dashboardListItem); ok && item.title == i.title {
+						item.selected = m.dashboardSelected[i.title]
+						items[idx] = item
+					}
+				}
+				m.dashboardList.SetItems(items)
+			}
+			return m, nil
 		case "u":
+			// Single unsubscribe (open browser)
 			i, ok := m.dashboardList.SelectedItem().(dashboardListItem)
 			if ok {
 				if i.link == "" {
@@ -586,6 +677,21 @@ func (m appModel) updateDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
+		case "U": // Shift+U or uppercase U for mass unsubscribe
+			selectedCount := len(m.dashboardSelected)
+			if selectedCount == 0 {
+				m.dashboardMsg = "⚠️  No newsletters selected. Use [Space] to select items."
+				return m, nil
+			}
+
+			if m.unsubscribing {
+				return m, nil
+			}
+
+			// Start mass unsubscribe
+			m.unsubscribing = true
+			m.dashboardMsg = fmt.Sprintf("🔄 Unsubscribing from %d newsletter(s)...", selectedCount)
+			return m, m.batchUnsubscribe()
 		case "/":
 			m.dashboardList.ResetSelected()
 			return m, nil
@@ -594,6 +700,8 @@ func (m appModel) updateDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.dashboardList.ResetFilter()
 				return m, nil
 			}
+			// Clear selection on escape
+			m.dashboardSelected = make(map[string]bool)
 			m.dashboardMsg = ""
 			return m, nil
 		}
@@ -634,6 +742,36 @@ func (m appModel) submitLogin() tea.Cmd {
 			password: password,
 			server:   server,
 		}
+	}
+}
+
+func (m appModel) batchUnsubscribe() tea.Cmd {
+	return func() tea.Msg {
+		// Build unsubscribe requests from selected items
+		var requests []struct {
+			Sender string
+			Link   string
+		}
+
+		for _, stat := range m.dashboardStats {
+			if m.dashboardSelected[stat.Sender] {
+				requests = append(requests, struct {
+					Sender string
+					Link   string
+				}{
+					Sender: stat.Sender,
+					Link:   stat.Unsubscribe,
+				})
+			}
+		}
+
+		if len(requests) == 0 {
+			return unsubscribeResultMsg{results: []unsubscribe.UnsubscribeResult{}}
+		}
+
+		// Pass credentials for mailto: links
+		results := unsubscribe.BatchUnsubscribe(requests, m.savedEmail, m.savedPassword, m.savedServer)
+		return unsubscribeResultMsg{results: results}
 	}
 }
 
@@ -840,34 +978,76 @@ func (m appModel) viewDashboard() string {
 		)
 	}
 
-	summary := headerStyle.Render(
-		fmt.Sprintf("Total: %d newsletters • %d emails", m.totalNewsletters, m.totalEmails),
-	)
+	// Update list items to reflect selection and unsubscribed state
+	items := m.dashboardList.Items()
+	for idx, item := range items {
+		if item, ok := item.(dashboardListItem); ok {
+			item.selected = m.dashboardSelected[item.title]
+			item.unsubscribed = m.dashboardUnsubscribed[item.title]
+			items[idx] = item
+		}
+	}
+	m.dashboardList.SetItems(items)
+
+	selectedCount := len(m.dashboardSelected)
+	summaryText := fmt.Sprintf("Total: %d newsletters • %d emails", m.totalNewsletters, m.totalEmails)
+	if selectedCount > 0 {
+		selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Bold(true)
+		summaryText += fmt.Sprintf(" • %s selected", selectedStyle.Render(fmt.Sprintf("%d", selectedCount)))
+	}
+	summary := headerStyle.Render(summaryText)
 
 	listView := docStyle.Render(m.dashboardList.View())
 
 	status := ""
 	if m.dashboardMsg != "" {
-		msgStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Padding(0, 1)
+		var msgStyle lipgloss.Style
+		if m.unsubscribing {
+			msgStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Bold(true).Padding(0, 1)
+		} else {
+			msgStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Padding(0, 1)
+		}
 		status = "\n" + msgStyle.Render(m.dashboardMsg)
 	}
 
-	help := helpStyle.Render("[↑↓] Navigate  [u] Unsubscribe  [/] Search  [q] Quit")
+	helpText := "[↑↓] Navigate  [Space] Select  [u] Single  [U] Mass Unsubscribe  [/] Search  [Esc] Clear  [q] Quit"
+	if m.unsubscribing {
+		helpText = "[🔄 Unsubscribing... Please wait]"
+	}
+	help := helpStyle.Render(helpText)
 
 	return summary + "\n" + listView + status + "\n" + help
 }
 
 type dashboardListItem struct {
-	title string
-	count int
-	link  string
+	title        string
+	count        int
+	link         string
+	selected     bool // Track if this item is selected
+	unsubscribed bool // Track if this newsletter is already unsubscribed
 }
 
 func (i dashboardListItem) Title() string {
 	countStr := strconv.Itoa(i.count)
 	color := getCountColor(i.count)
 	countStyle := lipgloss.NewStyle().Foreground(color).Bold(true)
-	return i.title + "  " + countStyle.Render(fmt.Sprintf("(%s)", countStr))
+
+	// Add prefix based on state
+	prefix := ""
+	if i.unsubscribed {
+		prefix = "✓✓ " // Double checkmark for unsubscribed
+	} else if i.selected {
+		prefix = "✓ " // Single checkmark for selected
+	}
+
+	// Style unsubscribed items differently
+	var titleStyle lipgloss.Style
+	if i.unsubscribed {
+		titleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Strikethrough(true)
+		return prefix + titleStyle.Render(i.title) + "  " + countStyle.Render(fmt.Sprintf("(%s)", countStr))
+	}
+
+	return prefix + i.title + "  " + countStyle.Render(fmt.Sprintf("(%s)", countStr))
 }
 
 func (i dashboardListItem) Description() string {
@@ -875,6 +1055,12 @@ func (i dashboardListItem) Description() string {
 	if i.count != 1 {
 		desc += "s"
 	}
+
+	// Show unsubscribed status
+	if i.unsubscribed {
+		return desc + "  •  ✅ Already unsubscribed"
+	}
+
 	if i.link != "" {
 		linkDisplay := i.link
 		if len(linkDisplay) > 60 {
