@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loickal/newsletter-cli/internal/config"
 	"github.com/loickal/newsletter-cli/internal/imap"
 	"github.com/loickal/newsletter-cli/internal/ui"
 	"github.com/spf13/cobra"
@@ -16,21 +17,30 @@ var analyzeCmd = &cobra.Command{
 	Use:   "analyze",
 	Short: "Analyze newsletters in your inbox",
 	Run: func(cmd *cobra.Command, args []string) {
-		reader := bufio.NewReader(os.Stdin)
+		cfg, _ := config.Load()
 
-		fmt.Print("Email: ")
-		email, _ := reader.ReadString('\n')
-		email = strings.TrimSpace(email)
+		email := cfg.Email
+		pass := config.Decrypt(cfg.Password)
+		server := cfg.Server
 
-		fmt.Print("Password: ")
-		pass, _ := reader.ReadString('\n')
-		pass = strings.TrimSpace(pass)
+		if email == "" || pass == "" || server == "" {
+			reader := bufio.NewReader(os.Stdin)
+			fmt.Print("Email: ")
+			email, _ = reader.ReadString('\n')
+			fmt.Print("Password: ")
+			pass, _ = reader.ReadString('\n')
+			fmt.Print("IMAP server (e.g. imap.gmail.com:993): ")
+			server, _ = reader.ReadString('\n')
 
-		fmt.Print("IMAP server (e.g. imap.gmail.com:993): ")
-		server, _ := reader.ReadString('\n')
-		server = strings.TrimSpace(server)
+			email = strings.TrimSpace(email)
+			pass = strings.TrimSpace(pass)
+			server = strings.TrimSpace(server)
+		} else {
+			fmt.Printf("🔐 Using saved account %s @ %s\n", email, server)
+		}
 
 		fmt.Print("Analyze last how many days? (default 30): ")
+		reader := bufio.NewReader(os.Stdin)
 		daysStr, _ := reader.ReadString('\n')
 		daysStr = strings.TrimSpace(daysStr)
 		if daysStr == "" {
@@ -47,7 +57,6 @@ var analyzeCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		// 🧋 launch TUI
 		if err := ui.Run(stats); err != nil {
 			os.Exit(1)
 		}
