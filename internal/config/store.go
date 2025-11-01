@@ -61,7 +61,19 @@ func Save(cfg Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0600)
+	err = os.WriteFile(path, data, 0600)
+	if err != nil {
+		return err
+	}
+
+	// Auto-sync to cloud if premium is enabled
+	// Import here to avoid circular dependency
+	go func() {
+		// Use a separate import to avoid circular dependency
+		// This will be handled by the UI layer calling AutoSync after Save
+	}()
+
+	return nil
 }
 
 // Load loads the config, handling both new and legacy formats

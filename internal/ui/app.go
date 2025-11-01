@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/loickal/newsletter-cli/internal/api"
 	"github.com/loickal/newsletter-cli/internal/config"
 	"github.com/loickal/newsletter-cli/internal/imap"
 	"github.com/loickal/newsletter-cli/internal/unsubscribe"
@@ -27,6 +28,11 @@ const (
 	screenAnalyzing
 	screenDashboard
 	screenAccounts
+	screenPremium
+	screenQuitConfirm
+	screenSyncSettings
+	screenDeleteConfirm
+	screenSubscription
 )
 
 type appModel struct {
@@ -77,6 +83,35 @@ type appModel struct {
 	accountsMsg      string
 	accountToDelete  string // ID of account pending deletion
 	deleteConfirming bool
+
+	// Premium/premium screen
+	premiumInputs   []textinput.Model
+	premiumFocused  int
+	premiumMsg      string
+	premiumEnabled  bool
+	premiumSyncing  bool
+	premiumEmail    string
+	premiumAPIURL   string
+	premiumTier     string
+	premiumFeatures []string
+
+	// Quit confirmation
+	quitConfirmSyncing bool
+
+	// Sync status
+	syncStatusMsg      string
+	isSyncing          bool
+	lastSyncStatusTime time.Time
+
+	// Delete confirmation
+	deleteConfirmDeleting bool
+
+	// Subscription screen
+	subscriptionList    list.Model
+	subscriptionErr     string
+	subscriptionMsg     string
+	subscriptionLoading bool
+	currentSubscription *api.Subscription
 }
 
 type updateInfo struct {
@@ -121,6 +156,23 @@ func NewAppModel(savedEmail, savedPassword, savedServer string, currentVersion s
 	daysInput.CharLimit = 3
 	daysInput.Width = 10
 
+	// Initialize premium inputs
+	apiURLInput := textinput.New()
+	apiURLInput.Placeholder = "https://api.newsletter-cli.apps.paas-01.pulseflow.cloud"
+	apiURLInput.CharLimit = 200
+	apiURLInput.Width = 50
+
+	premiumEmailInput := textinput.New()
+	premiumEmailInput.Placeholder = "your@email.com"
+	premiumEmailInput.CharLimit = 100
+	premiumEmailInput.Width = 50
+
+	premiumPasswordInput := textinput.New()
+	premiumPasswordInput.Placeholder = "Enter password"
+	premiumPasswordInput.EchoMode = textinput.EchoPassword
+	premiumPasswordInput.CharLimit = 100
+	premiumPasswordInput.Width = 50
+
 	// Initialize spinner
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
@@ -151,6 +203,21 @@ func NewAppModel(savedEmail, savedPassword, savedServer string, currentVersion s
 		action:      screenAccounts,
 	})
 
+	// Add Premium option
+	premiumDesc := "Enable cloud sync & premium features"
+	if savedEmail != "" && savedPassword != "" && savedServer != "" {
+		// Check if premium is enabled
+		pc, _ := api.GetPremiumConfig()
+		if pc != nil && pc.Enabled {
+			premiumDesc = "☁️ Premium (Synced)"
+		}
+	}
+	items = append(items, appMenuItem{
+		title:       "☁️ Premium",
+		description: premiumDesc,
+		action:      screenPremium,
+	})
+
 	// Add Quit option at the end
 	items = append(items, appMenuItem{
 		title:       "❌ Quit",
@@ -166,7 +233,13 @@ func NewAppModel(savedEmail, savedPassword, savedServer string, currentVersion s
 		Foreground(lipgloss.Color("219"))
 
 	welcomeList := list.New(items, delegate, 0, 0)
-	welcomeList.Title = "📬  Newsletter CLI"
+	// Check if premium is enabled for title
+	premiumConfig, _ := api.GetPremiumConfig()
+	premiumBadge := ""
+	if premiumConfig != nil && premiumConfig.Enabled {
+		premiumBadge = " ☁️"
+	}
+	welcomeList.Title = "📬  Newsletter CLI" + premiumBadge
 	welcomeList.SetShowStatusBar(false)
 	welcomeList.SetFilteringEnabled(false)
 	welcomeList.Styles.Title = lipgloss.NewStyle().
@@ -186,6 +259,20 @@ func NewAppModel(savedEmail, savedPassword, savedServer string, currentVersion s
 	// Initialize unsubscribed list
 	unsubscribedList, _ := config.GetUnsubscribedList()
 
+	// Check if premium is enabled
+	pc, _ := api.GetPremiumConfig()
+	premiumEnabled := pc != nil && pc.Enabled
+
+	// Pre-fill premium inputs if configured
+	if pc != nil {
+		if pc.APIURL != "" {
+			apiURLInput.SetValue(pc.APIURL)
+		}
+		if pc.Email != "" {
+			premiumEmailInput.SetValue(pc.Email)
+		}
+	}
+
 	return appModel{
 		screen:                screenWelcome,
 		welcomeList:           welcomeList,
@@ -199,6 +286,21 @@ func NewAppModel(savedEmail, savedPassword, savedServer string, currentVersion s
 		savedServer:           savedServer,
 		currentVersion:        currentVersion,
 		dashboardUnsubscribed: unsubscribedList,
+		premiumInputs:         []textinput.Model{apiURLInput, premiumEmailInput, premiumPasswordInput},
+		premiumFocused:        0,
+		premiumEnabled:        premiumEnabled,
+		premiumAPIURL: func() string {
+			if premiumConfig != nil {
+				return premiumConfig.APIURL
+			}
+			return ""
+		}(),
+		premiumEmail: func() string {
+			if premiumConfig != nil {
+				return premiumConfig.Email
+			}
+			return ""
+		}(),
 	}
 }
 
@@ -216,6 +318,56 @@ func (m appModel) Init() tea.Cmd {
 	// Start update check if on welcome screen and version is available
 	if m.screen == screenWelcome && m.currentVersion != "" {
 		cmds = append(cmds, m.checkForUpdate(m.currentVersion))
+	}
+
+	// Auto-sync on startup if premium enabled and setting is on
+	if m.premiumEnabled {
+		pc, _ := api.GetPremiumConfig()
+		// Default to true if not set (for existing users)
+		autoSyncOnStartup := true
+		if pc != nil {
+			// Check if all settings are unset (old config)
+			if !pc.AutoSyncOnStartup && !pc.PeriodicSyncEnabled && pc.PeriodicSyncInterval == 0 && !pc.SyncAccounts && !pc.SyncUnsubscribed {
+				// Old config - use defaults
+				autoSyncOnStartup = true
+			} else {
+				autoSyncOnStartup = pc.AutoSyncOnStartup
+			}
+		}
+
+		if autoSyncOnStartup {
+			cmds = append(cmds, m.checkAndSyncOnStartup())
+		}
+
+		// Start periodic sync ticker if enabled
+		periodicSyncEnabled := true
+		periodicInterval := 5 * time.Minute
+		if pc != nil {
+			// Check if all settings are unset (old config)
+			if !pc.AutoSyncOnStartup && !pc.PeriodicSyncEnabled && pc.PeriodicSyncInterval == 0 && !pc.SyncAccounts && !pc.SyncUnsubscribed {
+				// Old config - use defaults
+				periodicSyncEnabled = true
+				periodicInterval = 5 * time.Minute
+			} else {
+				if pc.PeriodicSyncEnabled {
+					periodicSyncEnabled = pc.PeriodicSyncEnabled
+				}
+				if pc.PeriodicSyncInterval > 0 {
+					periodicInterval = time.Duration(pc.PeriodicSyncInterval) * time.Minute
+				}
+			}
+		}
+
+		if periodicSyncEnabled {
+			cmds = append(cmds, tea.Tick(periodicInterval, func(t time.Time) tea.Msg {
+				return periodicSyncTick{}
+			}))
+		}
+
+		// Fetch subscription status on startup if premium enabled
+		if pc != nil && pc.Enabled && pc.Token != "" {
+			// Will be triggered when premium screen is viewed
+		}
 	}
 
 	return tea.Batch(cmds...)
@@ -255,9 +407,86 @@ type unsubscribeResultMsg struct {
 	results []unsubscribe.UnsubscribeResult
 }
 
+type periodicSyncTick struct{}
+
+type autoSyncCompleteMsg struct {
+	synced bool
+	err    error
+}
+
+type quitSyncCompleteMsg struct {
+	err error
+}
+
+type manualSyncCompleteMsg struct {
+	err error
+}
+
+func (m appModel) checkAndSyncOnStartup() tea.Cmd {
+	return func() tea.Msg {
+		synced, err := api.CheckAndSyncIfNeeded()
+		return autoSyncCompleteMsg{synced: synced, err: err}
+	}
+}
+
+func (m appModel) periodicSync() tea.Cmd {
+	return func() tea.Msg {
+		err := api.PeriodicSync()
+		if err != nil {
+			// Silently log but don't show error to user
+			return nil
+		}
+		return nil
+	}
+}
+
+func (m appModel) syncBeforeQuit() tea.Cmd {
+	return func() tea.Msg {
+		err := api.PeriodicSync()
+		return quitSyncCompleteMsg{err: err}
+	}
+}
+
+func (m appModel) manualSync() tea.Cmd {
+	return func() tea.Msg {
+		err := api.PeriodicSync()
+		return manualSyncCompleteMsg{err: err}
+	}
+}
+
 func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Handle special messages first
 	switch msg := msg.(type) {
+	case periodicSyncTick:
+		// Periodic sync tick - push local changes to cloud
+		return m, m.periodicSync()
+	case autoSyncCompleteMsg:
+		// Auto-sync completed on startup - silently handle
+		if msg.synced {
+			m.lastSyncStatusTime = time.Now()
+			m.syncStatusMsg = "✅ Synced"
+			// Clear after 5 seconds
+			go func() {
+				time.Sleep(5 * time.Second)
+				m.syncStatusMsg = ""
+			}()
+		}
+		return m, nil
+	case manualSyncCompleteMsg:
+		// Manual sync completed
+		m.isSyncing = false
+		if msg.err != nil {
+			m.syncStatusMsg = "❌ Sync failed: " + msg.err.Error()
+		} else {
+			m.lastSyncStatusTime = time.Now()
+			m.syncStatusMsg = "✅ Synced"
+			// Clear after 5 seconds
+			go func() {
+				time.Sleep(5 * time.Second)
+				m.syncStatusMsg = ""
+			}()
+		}
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -293,6 +522,11 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				action:      screenAccounts,
 			},
 			appMenuItem{
+				title:       "☁️ Premium",
+				description: "Enable cloud sync & premium features",
+				action:      screenPremium,
+			},
+			appMenuItem{
 				title:       "❌ Quit",
 				description: "Exit the application",
 				action:      screenWelcome, // Will quit anyway
@@ -321,16 +555,83 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		unsubscribedList, _ := config.GetUnsubscribedList()
 		m.dashboardUnsubscribed = unsubscribedList
 
+		// Send analytics events (async, non-blocking)
+		go func() {
+			// Convert stats to analytics format
+			analyticsStats := make([]api.NewsletterStatForAnalytics, 0, len(msg.stats))
+			for _, s := range msg.stats {
+				analyticsStats = append(analyticsStats, api.ConvertNewsletterStatsToAnalytics(
+					s.Sender,
+					s.Count,
+					s.Unsubscribe,
+				))
+			}
+			// Send analytics (silently fail if premium not enabled)
+			_ = api.SendNewsletterAnalysisEvent(analyticsStats, m.savedEmail)
+		}()
+
 		// Create dashboard
 		items := []list.Item{}
 		totalEmails := 0
+
+		// Check if premium is enabled AND user has active subscription (for categorization and quality scoring)
+		premiumConfig, _ := api.GetPremiumConfig()
+		hasPremiumConfig := premiumConfig != nil && premiumConfig.Enabled
+
+		// Check if user has active subscription by checking license features
+		isPremium := false
+		if hasPremiumConfig {
+			// Check subscription status by fetching features (which validates active subscription)
+			features, err := api.GetLicenseFeatures()
+			if err == nil {
+				if tier, ok := features["tier"].(string); ok && tier != "" && tier != "free" {
+					isPremium = true
+				}
+			}
+		}
+
+		// Prepare enrichment inputs for API call
+		enrichInputs := make([]api.EnrichNewsletterInput, 0, len(msg.stats))
 		for _, s := range msg.stats {
+			enrichInputs = append(enrichInputs, api.EnrichNewsletterInput{
+				Sender:         s.Sender,
+				EmailCount:     s.Count,
+				HasUnsubscribe: s.Unsubscribe != "",
+			})
+		}
+
+		// Enrich newsletters using API (with caching)
+		enrichedNewsletters := make(map[string]api.EnrichNewsletter)
+		if isPremium && len(enrichInputs) > 0 {
+			// Try to enrich via API (with caching)
+			enriched, err := api.EnrichNewslettersWithCache(enrichInputs)
+			if err == nil {
+				for _, e := range enriched {
+					enrichedNewsletters[e.Sender] = e
+				}
+			}
+			// If API fails, silently fall back to showing without categories/scores
+		}
+
+		for _, s := range msg.stats {
+			var category string
+			var qualityScore int
+
+			// Use enriched data if available
+			if enriched, found := enrichedNewsletters[s.Sender]; found && isPremium {
+				category = enriched.Category.Category
+				qualityScore = enriched.QualityScore
+			}
+
 			items = append(items, dashboardListItem{
 				title:        s.Sender,
 				count:        s.Count,
 				link:         s.Unsubscribe,
 				selected:     m.dashboardSelected[s.Sender], // Preserve selection state
 				unsubscribed: m.dashboardUnsubscribed[s.Sender],
+				category:     category,
+				qualityScore: qualityScore,
+				isPremium:    isPremium,
 			})
 			totalEmails += s.Count
 		}
@@ -395,7 +696,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case serverDiscoveredMsg:
 		m.discoveringServer = false
 		if msg.err != nil {
-			m.serverStatusMsg = fmt.Sprintf("⚠️  Could not discover server: %v", msg.err)
+			m.serverStatusMsg = fmt.Sprintf("❌  Could not discover server: %v", msg.err)
 			// Clear last discovered so we can retry
 			m.lastDiscoveredEmail = ""
 		} else {
@@ -404,6 +705,20 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loginInputs[2].SetValue(msg.server)
 		}
 		return m, nil
+	}
+
+	// Handle global shortcuts (before screen-specific handlers)
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && m.premiumEnabled {
+		switch keyMsg.String() {
+		case "ctrl+s":
+			// Manual sync shortcut from any screen
+			if !m.isSyncing {
+				m.isSyncing = true
+				m.syncStatusMsg = "☁️ Syncing..."
+				return m, m.manualSync()
+			}
+			return m, nil
+		}
 	}
 
 	// Handle screen-specific updates
@@ -420,6 +735,16 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateDashboard(msg)
 	case screenAccounts:
 		return m.updateAccounts(msg)
+	case screenPremium:
+		return m.updatePremium(msg)
+	case screenQuitConfirm:
+		return m.updateQuitConfirm(msg)
+	case screenSyncSettings:
+		return m.updateSyncSettings(msg)
+	case screenDeleteConfirm:
+		return m.updateDeleteConfirm(msg)
+	case screenSubscription:
+		return m.updateSubscription(msg)
 	}
 
 	return m, nil
@@ -430,11 +755,21 @@ func (m appModel) updateWelcome(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c", "esc":
+			// If premium enabled, ask if user wants to sync
+			if m.premiumEnabled {
+				m.screen = screenQuitConfirm
+				return m, nil
+			}
 			return m, tea.Quit
 		case "enter":
 			i, ok := m.welcomeList.SelectedItem().(appMenuItem)
 			if ok {
 				if i.action == screenWelcome {
+					// If premium enabled, ask if user wants to sync
+					if m.premiumEnabled {
+						m.screen = screenQuitConfirm
+						return m, nil
+					}
 					return m, tea.Quit // Quit option
 				}
 				if i.action == screenAccounts {
@@ -448,6 +783,19 @@ func (m appModel) updateWelcome(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.screen = screenAccounts
 					// Initialize accounts list
 					return m.initAccountsList()
+				}
+				if i.action == screenPremium {
+					m.screen = screenPremium
+					m.premiumInputs[0].Focus()
+					for i := 1; i < len(m.premiumInputs); i++ {
+						m.premiumInputs[i].Blur()
+					}
+					m.premiumFocused = 0
+					// Fetch license features and subscription status asynchronously if premium is enabled
+					if m.premiumEnabled {
+						return m, tea.Batch(m.fetchLicenseFeatures(), m.fetchSubscriptionStatus())
+					}
+					return m, nil
 				}
 				m.screen = i.action
 				switch m.screen {
@@ -643,8 +991,20 @@ func (m appModel) updateDashboard(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Save to unsubscribed list
 				m.dashboardUnsubscribed[result.Sender] = true
 				config.AddUnsubscribed(result.Sender)
+				// Send analytics event (async, non-blocking)
+				go func(sender string) {
+					_ = api.SendUnsubscribeEvent(sender, true, m.savedEmail)
+				}(result.Sender)
+				// Auto-sync to cloud if premium enabled
+				go func() {
+					_ = api.AutoSync() // Silently fail if premium not enabled
+				}()
 			} else {
 				failCount++
+				// Send analytics event for failed unsubscribe
+				go func(sender string) {
+					_ = api.SendUnsubscribeEvent(sender, false, m.savedEmail)
+				}(result.Sender)
 			}
 		}
 
@@ -756,6 +1116,27 @@ func (m appModel) submitLogin() tea.Cmd {
 			return errorMsg("All fields are required")
 		}
 
+		// Check if this would be adding a second+ account (first account is free)
+		cfg, _ := config.Load()
+		if cfg != nil && len(cfg.Accounts) > 0 {
+			// Check if account already exists (updating is allowed)
+			accountExists := false
+			for _, acc := range cfg.Accounts {
+				if acc.Email == email {
+					accountExists = true
+					break
+				}
+			}
+
+			// If adding a new account (not updating), check account limit
+			if !accountExists {
+				canAdd, reason := api.CanAddAccount(len(cfg.Accounts))
+				if !canAdd {
+					return errorMsg("⭐ " + reason + "\n\nNavigate to '☁️ Premium' to upgrade, or press [Esc] to go back.")
+				}
+			}
+		}
+
 		// Test connection
 		if err := imap.ConnectIMAP(email, password, server); err != nil {
 			return errorMsg("Connection failed: " + err.Error())
@@ -766,6 +1147,11 @@ func (m appModel) submitLogin() tea.Cmd {
 		if err != nil {
 			return errorMsg("Failed to save account: " + err.Error())
 		}
+
+		// Auto-sync to cloud if premium enabled
+		go func() {
+			_ = api.AutoSync() // Silently fail if premium not enabled
+		}()
 
 		return loginSuccessMsg{
 			email:    email,
@@ -871,6 +1257,16 @@ func (m appModel) View() string {
 		view = m.viewDashboard()
 	case screenAccounts:
 		view = m.viewAccounts()
+	case screenPremium:
+		view = m.viewPremium()
+	case screenQuitConfirm:
+		view = m.viewQuitConfirm()
+	case screenSyncSettings:
+		view = m.viewSyncSettings()
+	case screenDeleteConfirm:
+		view = m.viewDeleteConfirm()
+	case screenSubscription:
+		view = m.viewSubscription()
 	}
 
 	// Add error message if present
@@ -892,7 +1288,13 @@ func (m appModel) viewWelcome() string {
 
 	// Update title with version if available
 	if m.currentVersion != "" {
-		m.welcomeList.Title = fmt.Sprintf("📬  Newsletter CLI v%s", m.currentVersion)
+		// Add premium badge if enabled
+		premiumConfig, _ := api.GetPremiumConfig()
+		premiumBadge := ""
+		if premiumConfig != nil && premiumConfig.Enabled {
+			premiumBadge = " ☁️"
+		}
+		m.welcomeList.Title = fmt.Sprintf("📬  Newsletter CLI v%s%s", m.currentVersion, premiumBadge)
 	}
 
 	listView := docStyle.Render(m.welcomeList.View())
@@ -912,9 +1314,54 @@ func (m appModel) viewWelcome() string {
 		)
 	}
 
-	help := helpStyle.Render("[↑↓] Navigate  [Enter] Select  [q/Esc] Quit")
+	// Show sync status if premium enabled
+	syncStatusText := ""
+	if m.premiumEnabled {
+		if m.isSyncing {
+			syncStatusText = "\n" + lipgloss.NewStyle().
+				Foreground(lipgloss.Color("14")).
+				Render("☁️ Syncing...")
+		} else if m.syncStatusMsg != "" {
+			syncStatusText = "\n" + lipgloss.NewStyle().
+				Foreground(lipgloss.Color("10")).
+				Render(m.syncStatusMsg)
+		} else {
+			pc, _ := api.GetPremiumConfig()
+			if pc != nil && !pc.LastSyncTime.IsZero() {
+				syncTime := formatTimeAgoSync(pc.LastSyncTime)
+				syncStatusText = "\n" + lipgloss.NewStyle().
+					Foreground(lipgloss.Color("241")).
+					Render(fmt.Sprintf("☁️ Last sync: %s", syncTime))
+			}
+		}
+	}
 
-	return docStyle.Render(intro + "\n\n" + listView + updateNotice + "\n" + help)
+	helpText := "[↑↓] Navigate  [Enter] Select  [q/Esc] Quit"
+	if m.premiumEnabled {
+		helpText = "[↑↓] Navigate  [Enter] Select  [Ctrl+S] Sync  [q/Esc] Quit"
+	}
+	help := helpStyle.Render(helpText)
+
+	return docStyle.Render(intro + "\n\n" + listView + updateNotice + syncStatusText + "\n" + help)
+}
+
+// formatTimeAgoSync formats time for sync status (shorter format)
+func formatTimeAgoSync(t time.Time) string {
+	now := time.Now()
+	diff := now.Sub(t)
+
+	if diff < time.Minute {
+		return "just now"
+	} else if diff < time.Hour {
+		minutes := int(diff.Minutes())
+		return fmt.Sprintf("%dm ago", minutes)
+	} else if diff < 24*time.Hour {
+		hours := int(diff.Hours())
+		return fmt.Sprintf("%dh ago", hours)
+	} else {
+		days := int(diff.Hours() / 24)
+		return fmt.Sprintf("%dd ago", days)
+	}
 }
 
 func (m appModel) viewLogin() string {
@@ -1055,8 +1502,11 @@ type dashboardListItem struct {
 	title        string
 	count        int
 	link         string
-	selected     bool // Track if this item is selected
-	unsubscribed bool // Track if this newsletter is already unsubscribed
+	selected     bool   // Track if this item is selected
+	unsubscribed bool   // Track if this newsletter is already unsubscribed
+	category     string // Newsletter category (premium only)
+	qualityScore int    // Quality score 0-100 (premium only)
+	isPremium    bool   // Whether premium features should be shown
 }
 
 func (i dashboardListItem) Title() string {
@@ -1072,14 +1522,28 @@ func (i dashboardListItem) Title() string {
 		prefix = "✓ " // Single checkmark for selected
 	}
 
+	// Add quality score stars (⭐) for high scores (premium only)
+	stars := ""
+	if i.isPremium && i.qualityScore >= 80 {
+		stars = " ⭐⭐⭐⭐⭐"
+	} else if i.isPremium && i.qualityScore >= 70 {
+		stars = " ⭐⭐⭐⭐"
+	} else if i.isPremium && i.qualityScore >= 60 {
+		stars = " ⭐⭐⭐"
+	} else if i.isPremium && i.qualityScore >= 50 {
+		stars = " ⭐⭐"
+	} else if i.isPremium && i.qualityScore >= 40 {
+		stars = " ⭐"
+	}
+
 	// Style unsubscribed items differently
 	var titleStyle lipgloss.Style
 	if i.unsubscribed {
 		titleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Strikethrough(true)
-		return prefix + titleStyle.Render(i.title) + "  " + countStyle.Render(fmt.Sprintf("(%s)", countStr))
+		return prefix + titleStyle.Render(i.title) + stars + "  " + countStyle.Render(fmt.Sprintf("(%s)", countStr))
 	}
 
-	return prefix + i.title + "  " + countStyle.Render(fmt.Sprintf("(%s)", countStr))
+	return prefix + i.title + stars + "  " + countStyle.Render(fmt.Sprintf("(%s)", countStr))
 }
 
 func (i dashboardListItem) Description() string {
@@ -1090,17 +1554,51 @@ func (i dashboardListItem) Description() string {
 
 	// Show unsubscribed status
 	if i.unsubscribed {
-		return desc + "  •  ✅ Already unsubscribed"
+		status := desc + "  •  ✅ Already unsubscribed"
+		if i.isPremium && i.category != "" {
+			status += "  •  📂 " + i.category
+		}
+		if i.isPremium && i.qualityScore > 0 {
+			status += fmt.Sprintf("  •  Score: %d/100", i.qualityScore)
+		}
+		return status
 	}
 
+	// Build description with quality info (premium only)
+	var parts []string
+	parts = append(parts, desc)
+
+	// Add category (premium only)
+	if i.isPremium && i.category != "" {
+		parts = append(parts, "📂 "+i.category)
+	}
+
+	// Add quality score (premium only)
+	if i.isPremium && i.qualityScore > 0 {
+		var scoreColor lipgloss.Color
+		if i.qualityScore >= 80 {
+			scoreColor = lipgloss.Color("10") // Green
+		} else if i.qualityScore >= 60 {
+			scoreColor = lipgloss.Color("11") // Yellow
+		} else {
+			scoreColor = lipgloss.Color("9") // Red
+		}
+		scoreStyle := lipgloss.NewStyle().Foreground(scoreColor).Bold(true)
+		parts = append(parts, "⭐ "+scoreStyle.Render(fmt.Sprintf("%d/100", i.qualityScore)))
+	}
+
+	// Add unsubscribe link status
 	if i.link != "" {
 		linkDisplay := i.link
-		if len(linkDisplay) > 60 {
-			linkDisplay = linkDisplay[:57] + "..."
+		if len(linkDisplay) > 40 {
+			linkDisplay = linkDisplay[:37] + "..."
 		}
-		return desc + "  •  🔗 " + linkDisplay
+		parts = append(parts, "🔗 "+linkDisplay)
+	} else {
+		parts = append(parts, "⚠️  No unsubscribe link")
 	}
-	return desc + "  •  ⚠️  No unsubscribe link"
+
+	return strings.Join(parts, "  •  ")
 }
 
 func (i dashboardListItem) FilterValue() string { return i.title }
@@ -1297,6 +1795,16 @@ func (m appModel) updateAccounts(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "a":
 			// Add new account (go to login screen)
+			// Check if this would be adding a second+ account (first account is free)
+			cfg, _ := config.Load()
+			if cfg != nil && len(cfg.Accounts) > 0 {
+				// Check account limit based on subscription tier
+				canAdd, reason := api.CanAddAccount(len(cfg.Accounts))
+				if !canAdd {
+					m.accountsMsg = "⭐ " + reason + "\nPress 'p' to go to Premium, or [Esc] to go back."
+					return m, nil
+				}
+			}
 			m.screen = screenLogin
 			// Clear login inputs
 			m.loginInputs[0].SetValue("")
@@ -1306,6 +1814,11 @@ func (m appModel) updateAccounts(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for i := 1; i < len(m.loginInputs); i++ {
 				m.loginInputs[i].Blur()
 			}
+			return m, nil
+		case "p":
+			// Navigate to premium screen
+			m.screen = screenPremium
+			m.accountsMsg = "" // Clear any messages
 			return m, nil
 		case "/":
 			m.accountsList.ResetSelected()
@@ -1339,7 +1852,7 @@ func (m appModel) viewAccounts() string {
 		status = "\n" + msgStyle.Render(m.accountsMsg)
 	}
 
-	helpText := "[↑↓] Navigate  [Enter] Select  [a] Add  [d] Delete  [/] Search  [Esc] Back  [q] Quit"
+	helpText := "[↑↓] Navigate  [Enter] Select  [a] Add  [d] Delete  [p] Premium  [/] Search  [Esc] Back  [q] Quit"
 	if m.deleteConfirming {
 		helpText = "[Enter] Confirm Delete  [Esc] Cancel"
 	}

@@ -18,8 +18,9 @@ Built with **Go**, **Cobra**, and **Bubble Tea** — focused on simplicity, loca
 
 ---
 
-## 🧩 Completed Features (v0.1.0 - v0.2.0)
+## 🧩 Completed Features (v0.1.0 - v1.0.0-BETA-1)
 
+### Core Features (v0.1.0 - v0.2.0) ✅
 ✅ IMAP login & server autodiscovery (DNS SRV, autoconfig/autodiscover)  
 ✅ Fetch & analyze recent emails  
 ✅ Heuristic newsletter detection  
@@ -37,7 +38,22 @@ Built with **Go**, **Cobra**, and **Bubble Tea** — focused on simplicity, loca
 ✅ Auto-discovery of IMAP servers  
 ✅ GUI launcher (double-click support)  
 ✅ Cross-platform support (macOS, Linux, Windows)  
-✅ Homebrew and Winget package distribution
+✅ Homebrew package distribution  
+✅ Winget package (pending Microsoft approval)
+
+### Premium Features (v1.0.0-BETA-1) ✅ **NEW**
+✅ **Cloud Sync** - Sync accounts and unsubscribed lists across devices  
+✅ **Conflict Resolution** - Three-way merge with automatic conflict detection  
+✅ **Stripe Subscriptions** - Full subscription management (Starter, Pro, Enterprise)  
+✅ **Analytics Dashboard** - Web-based dashboard with charts and trends  
+✅ **Advanced Analytics** - Newsletter categorization & quality scoring  
+✅ **Usage Tracking** - API usage statistics and abuse detection  
+✅ **Rate Limiting** - Tier-based API rate limits  
+✅ **HMAC Signing** - Optional request signing for extra security  
+✅ **Server-Side Security** - All premium features secured server-side  
+✅ **Account Limit Validation** - Server-side enforced account limits
+  - Starter: 3 accounts, Pro: 10 accounts, Enterprise: 50 accounts
+  - Validates on every sync attempt, cannot be bypassed
 
 ---
 
@@ -124,9 +140,9 @@ Built with **Go**, **Cobra**, and **Bubble Tea** — focused on simplicity, loca
   ```bash
   brew install loickal/newsletter-cli/newsletter-cli
   ```
-- ✅ Winget package manager (Windows):
+- ✅ Winget package manager (Windows) - **Pending Microsoft approval**:
   ```bash
-  winget install Loickal.NewsletterCLI
+  winget install Loickal.NewsletterCLI  # Coming soon
   ```
 - ✅ Docker image:
   ```bash
@@ -145,15 +161,20 @@ Built with **Go**, **Cobra**, and **Bubble Tea** — focused on simplicity, loca
 
 ---
 
-## 🧠 Phase 7 – Future “Pro” Features
+## 🧠 Phase 7 – Future Premium Features
 
-| Feature | Description |
-|----------|-------------|
-| 📊 Trend Dashboard | Visual charts of newsletters/week (ASCII or web export) |
-| 🔔 Notifications | Optional Discord / Telegram alerts for new senders |
-| 🤖 AI Classifier | Use LLM to classify “useful” vs “spammy” newsletters |
-| ☁️ Cloud Sync | Sync unsubscribed list across devices |
-| 💌 Smart Inbox | Export non-newsletter messages for backup |
+| Feature | Description | Status |
+|----------|-------------|--------|
+| 📊 Trend Dashboard | ✅ Visual charts of newsletters/week (web export) | ✅ **Complete** |
+| ☁️ Cloud Sync | ✅ Sync unsubscribed list across devices | ✅ **Complete** |
+| 📈 Analytics | ✅ Analytics collection and web dashboard | ✅ **Complete** |
+| 🎯 Advanced Analytics | ✅ Newsletter categorization and quality scoring | ✅ **Complete** |
+| 🔔 Notifications | Optional Discord / Telegram alerts for new senders | 🔜 Future |
+| 🤖 AI Classifier | Use LLM to classify "useful" vs "spammy" newsletters | 🔜 Future |
+| 📅 Smart Scheduling | Gradual unsubscribe automation with queue system | 🔜 Future |
+| 🔗 Webhooks | Integration webhooks for automation | 🔜 Future |
+| 👥 Team Workspaces | Multi-user workspaces (Enterprise) | 🔜 Future |
+| 📋 Compliance Reports | GDPR/CCPA audit logs and reports (Enterprise) | 🔜 Future |
 
 ---
 
@@ -163,9 +184,9 @@ Built with **Go**, **Cobra**, and **Bubble Tea** — focused on simplicity, loca
 |----------|--------|--------|
 | **v0.1.0** | MVP: IMAP connection, newsletter detection, basic TUI | ✅ Complete |
 | **v0.2.0** | Mass unsubscribe, mailto support, multiple accounts, age encryption | ✅ Complete |
-| **v0.3.0** | Config improvements, caching, logging, account naming | 🟡 In progress |
-| **v0.4.0** | CI/CD with GoReleaser, Homebrew, Winget | ✅ Complete |
-| **v1.0.0** | Stable release with all features + comprehensive docs | 🔜 Future |
+| **v0.4.0** | CI/CD with GoReleaser, Homebrew (Winget pending) | ✅ Complete |
+| **v1.0.0-BETA-1** | Premium features, cloud sync, analytics, subscriptions, account limits | ✅ **Current** |
+| **v1.0.0** | Stable release with comprehensive testing + docs | 🔜 Future |
 
 ---
 
@@ -200,5 +221,5 @@ lightweight, cross-platform, and privacy-respecting — no web tracking, no clou
 ---
 
 **Maintainer:** [@loickal](https://github.com/loickal)  
-**License:** MIT  
-**Current Version:** `v0.2.0`
+**License:** AGPL-3.0  
+**Current Version:** `v1.0.0-BETA-1`
