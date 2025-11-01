@@ -11,7 +11,7 @@ import (
 	"golang.org/x/term"
 )
 
-var version = "0.3.0"
+var version = "1.0.0-BETA-1"
 
 func main() {
 	// Detect if running from GUI (double-click) vs CLI

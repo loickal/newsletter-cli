@@ -2,8 +2,10 @@
 
 > A beautiful, privacy-friendly terminal tool to analyze and unsubscribe from newsletters — right from your inbox.
 
+**Current Version:** `v1.0.0-BETA-1` 🚧 **Beta Release** - See [CHANGELOG.md](CHANGELOG.md) for details.
+
 [![Go Version](https://img.shields.io/github/go-mod/go-version/loickal/newsletter-cli)](https://go.dev/)
-[![License](https://img.shields.io/github/license/loickal/newsletter-cli)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/loickal/newsletter-cli/ci.yml?branch=main)](https://github.com/loickal/newsletter-cli/actions)
 [![Release](https://img.shields.io/github/v/release/loickal/newsletter-cli?include_prereleases&sort=semver)](https://github.com/loickal/newsletter-cli/releases)
 
@@ -20,6 +22,7 @@ No servers, no tracking, no nonsense.
 
 ## ✨ Features
 
+### Core Features (Free & Open Source)
 ✅ Connect via IMAP (Gmail, Outlook, etc.) with auto-discovery  
 ✅ Smart newsletter detection  
 ✅ Aggregated sender statistics  
@@ -29,9 +32,24 @@ No servers, no tracking, no nonsense.
 ✅ One-click unsubscribe via `List-Unsubscribe` header  
 ✅ Persistent tracking of unsubscribed newsletters  
 ✅ Multiple account management (add, switch, delete accounts)  
+  - *Note: First account is free. Additional accounts require premium subscription*  
 ✅ Secure encryption using [age](https://filippo.io/age) (ChaCha20Poly1305)  
 ✅ Encrypted local credential storage  
 ✅ Config saved under `~/.config/newsletter-cli/config.json`
+
+### 🌟 Premium Features (Subscription Required)
+**Available via subscription** - See [Premium Features](#-premium-features) section below.
+
+✅ **Cloud Sync** - Sync accounts and unsubscribed lists across devices  
+✅ **Analytics Dashboard** - Web-based analytics with charts and trends  
+✅ **Advanced Analytics** - Newsletter categorization and quality scoring  
+✅ **Usage Statistics** - Track API usage and monitor your account  
+✅ **Rate Limiting** - Tier-based API limits (Starter, Pro, Enterprise)  
+  - *Note: Rate limits may change and will be communicated in updates*  
+✅ **Account Limits** - Server-side enforced account limits per tier
+  - Starter: 3 accounts, Pro: 10 accounts, Enterprise: 50 accounts
+  - Cannot be bypassed by modifying client code  
+✅ **Secure API** - Optional HMAC request signing for extra security
 
 ---
 
@@ -48,10 +66,13 @@ brew tap loickal/newsletter-cli
 brew install newsletter-cli
 ```
 
-### 🪟 Winget (Windows)
+### 🪟 Winget (Windows) - Coming Soon
+Microsoft approval pending. Once approved:
 ```bash
 winget install Loickal.NewsletterCLI
 ```
+
+**Alternative for Windows**: Use Go install or download binaries from GitHub releases.
 
 ### 🐳 Docker
 ```bash
@@ -126,9 +147,78 @@ newsletter-cli analyze --email foo@example.com --server imap.example.com:993 --d
 ### Multiple Accounts
 
 Manage multiple email accounts:
+- **First account is free** - No subscription required
+- **Additional accounts require premium subscription**
 - Each account is stored with encrypted credentials
 - Switch between accounts from the Accounts screen
 - Each account has its own unsubscribe history
+
+## 🌟 Premium Features
+
+**Newsletter CLI** offers premium features via subscription to support development and infrastructure costs.
+
+### Available Plans
+
+| Plan | Price | Features | Account Limit |
+|------|-------|----------|---------------|
+| **Starter** | $5/month | Cloud sync, Basic analytics, Web dashboard | 3 accounts |
+| **Pro** | $12/month | Everything in Starter + Advanced analytics, Smart scheduling (coming soon) | 10 accounts |
+| **Enterprise** | $50/month | Everything in Pro + Team features, Compliance reporting (coming soon) | 50 accounts |
+
+### Premium Features Overview
+
+#### ☁️ Cloud Sync
+- Sync email accounts across all your devices
+- Sync unsubscribed newsletters list
+- Automatic conflict resolution with three-way merge
+- Offline queue for failed syncs
+- Automatic retry with background processing
+- **Account limits enforced server-side** - Cannot be bypassed by modifying client code
+
+#### 📊 Analytics Dashboard
+- Beautiful web-based dashboard with interactive charts
+- View trends over day, week, month, or year
+- Newsletter and email statistics
+- Unsubscribe tracking and insights
+- One-click access from CLI (`[w]` key in Premium screen)
+
+#### 🎯 Advanced Analytics (Pro+)
+- **Newsletter Categorization**: Automatic classification into 7 categories
+  - Technology, Finance, Marketing, Subscriptions, Promotional, News/Media, Other
+- **Quality Scoring**: 0-100 score based on frequency, unsubscribe ease, and category
+  - Displayed in CLI with star ratings (⭐⭐⭐⭐⭐)
+- **Period-over-Period Insights**: Compare current vs previous periods
+  - Percentage changes and trend analysis
+
+#### 📈 Usage Statistics
+- Track API usage over time
+- View requests per endpoint
+- Monitor rate limit status
+- Access via CLI (`[v]` key in Premium screen)
+
+#### 🔒 Security Features
+- Tier-based rate limiting (30-500 requests/minute based on plan)
+  - *Note: Rate limits are subject to change and will be communicated via updates*
+- Usage tracking for abuse detection
+- Optional HMAC request signing
+- Server-side feature validation (cannot be bypassed)
+
+### Getting Started with Premium
+
+1. **Launch the app** and navigate to `☁️ Premium` from the main menu
+2. **Register/Login** with your email and password
+3. **Subscribe** - Press `[u]` to view plans and subscribe via Stripe
+4. **Enable features** - Premium features activate automatically after subscription
+
+### Premium Configuration
+
+Premium settings are stored in `~/.config/newsletter-cli/premium.json`:
+- API credentials (encrypted)
+- Sync preferences
+- Analytics settings
+- Subscription status
+
+---
 
 ## 🗺️ Roadmap
 
@@ -137,9 +227,9 @@ The full roadmap is available in [ROADMAP.md](ROADMAP.md).
 | Phase | Focus | Status |
 |-------|-------|--------|
 | **v0.2.0** | Mass unsubscribe, mailto support, multiple accounts | ✅ Complete |
-| **v0.3.0** | Caching, logging, better config | 🟡 Planned |
 | **v0.4.0** | CI/CD & release pipeline | ✅ Complete |
-| **v1.0.0** | Stable release with all features | 🔜 Future |
+| **v1.0.0-BETA-1** | Premium features, cloud sync, analytics, account limits | ✅ **Current** |
+| **v1.0.0** | Stable release with comprehensive testing | 🔜 Future |
 
 ## 🧩 Tech Stack
 
@@ -189,7 +279,16 @@ Please read [ROADMAP.md](ROADMAP.md) for feature planning before proposing major
 
 ## 🪪 License
 
-MIT License © 2025 Loïc Kalbermatter
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+
+**AGPL-3.0** is a strong copyleft license that requires:
+- You may use, modify, and distribute the software
+- If you modify the software and provide it over a network, you must share the source code
+- All modifications must be released under the same AGPL-3.0 license
+
+See the [LICENSE](LICENSE) file for the full license text, or visit [https://www.gnu.org/licenses/agpl-3.0.html](https://www.gnu.org/licenses/agpl-3.0.html) for more information.
+
+© 2025 Loïc Kalbermatter
 
 ## 🌟 Acknowledgements
 
